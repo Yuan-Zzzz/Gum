@@ -1438,6 +1438,20 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
 
 #if !FRB
     public List<AnimationRuntime>? Animations { get; set; }
+
+    public void PlayAnimation(int index, double time)
+    {
+        if (Animations != null && index >= 0 && index < Animations.Count)
+        {
+            Animations[index].ApplyAtTimeTo(time, this);
+        }
+    }
+
+    public void PlayAnimation(string name, double time)
+    {
+        var animation = Animations?.FirstOrDefault(item => item.Name == name);
+        animation?.ApplyAtTimeTo(time, this);
+    }
 #endif
 
     #endregion
