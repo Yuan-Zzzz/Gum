@@ -16,7 +16,7 @@ Animations defined in the Gum tool can be loaded at runtime. To load and play an
 
 1. Call `GumService.LoadAnimations`
 2. Obtain an `AnimationRuntime` instance from your `GraphicalUiElement`
-3. Call `ApplyAtTimeTo` to apply the animation at runtime.
+3. Call `StartAnimation` to play the animation automatically.
 
 The following code shows how to load the first screen in a Gum project and how to play its animation.
 
@@ -31,6 +31,7 @@ protected override void Initialize()
     var screen = ObjectFinder.Self.GumProjectSave.Screens.First();
     screenRuntime = screen.ToGraphicalUiElement();
     screenRuntime.AddToRoot();
+    screenRuntime.StartAnimation(0);
 
     base.Initialize();
 }
@@ -38,9 +39,6 @@ protected override void Initialize()
 protected override void Update(GameTime gameTime)
 {
     Gum.Update(gameTime);
-
-    var animation = screenRuntime.Animations[0];
-    animation.ApplyAtTimeTo(gameTime.TotalGameTime.TotalSeconds, screenRuntime);
 
     base.Update(gameTime);
 }

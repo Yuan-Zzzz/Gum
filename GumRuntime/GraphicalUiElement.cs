@@ -1439,6 +1439,9 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
 #if !FRB
     public List<AnimationRuntime>? Animations { get; set; }
 
+    AnimationRuntime? currentAnimation;
+    double currentAnimationTime;
+
     public void PlayAnimation(int index, double time)
     {
         if (Animations != null && index >= 0 && index < Animations.Count)
@@ -1451,6 +1454,30 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
     {
         var animation = Animations?.FirstOrDefault(item => item.Name == name);
         animation?.ApplyAtTimeTo(time, this);
+    }
+
+    public void StartAnimation(int index)
+    {
+        if (Animations != null && index >= 0 && index < Animations.Count)
+        {
+            currentAnimation = Animations[index];
+            currentAnimationTime = 0;
+        }
+    }
+
+    public void StartAnimation(string name)
+    {
+        var animation = Animations?.FirstOrDefault(item => item.Name == name);
+        if (animation != null)
+        {
+            currentAnimation = animation;
+            currentAnimationTime = 0;
+        }
+    }
+
+    public void StopAnimation()
+    {
+        currentAnimation = null;
     }
 #endif
 
@@ -6312,6 +6339,18 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
         }
         ////////////////End Early Out///////////////////
 
+#if !FRB
+        if (currentAnimation != null)
+        {
+            currentAnimationTime += secondDifference;
+            currentAnimation.ApplyAtTimeTo(currentAnimationTime, this);
+
+            if (!currentAnimation.Loops && currentAnimationTime >= currentAnimation.Length)
+            {
+                currentAnimation = null;
+            }
+        }
+#endif
 
         var didSpriteUpdate = asAnimatable?.AnimateSelf(secondDifference) ?? false;
 
