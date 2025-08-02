@@ -9,6 +9,8 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.ComponentModel.Composition;
+using System.IO;
+using System.Linq;
 using Gum.Commands;
 using ToolsUtilities;
 using Color = System.Drawing.Color;
@@ -134,6 +136,59 @@ class MainPropertiesWindowPlugin : InternalPlugin
             case nameof(viewModel.ShowLocalization):
                 shouldSaveAndRefresh = true;
                 break;
+            case nameof(viewModel.FontCharacterFile):
+                if(!string.IsNullOrEmpty(viewModel.FontCharacterFile) && FileManager.IsRelative(viewModel.FontCharacterFile) == false)
+                {
+                    viewModel.FontCharacterFile = FileManager.MakeRelative(viewModel.FontCharacterFile,
+                        GumState.Self.ProjectState.ProjectDirectory, preserveCase:true);
+                    shouldSaveAndRefresh = false;
+                }
+                else if(viewModel.UseFontCharacterFile && !string.IsNullOrEmpty(viewModel.FontCharacterFile))
+                {
+                    var absolute = FileManager.MakeAbsolute(viewModel.FontCharacterFile,
+                        GumState.Self.ProjectState.ProjectDirectory);
+                    if(File.Exists(absolute))
+                    {
+                        try
+                        {
+                            var ranges = GetFontRangesFromFile(absolute);
+                            if(!string.IsNullOrEmpty(ranges))
+                            {
+                                viewModel.FontRanges = ranges;
+                            }
+                        }
+                        catch(Exception ex)
+                        {
+                            _dialogService.ShowMessage($"Error reading font character file:\n{ex}");
+                        }
+                    }
+                }
+                break;
+            case nameof(viewModel.UseFontCharacterFile):
+                if(viewModel.UseFontCharacterFile)
+                {
+                    if(!string.IsNullOrEmpty(viewModel.FontCharacterFile))
+                    {
+                        var absolute = FileManager.MakeAbsolute(viewModel.FontCharacterFile,
+                            GumState.Self.ProjectState.ProjectDirectory);
+                        if(File.Exists(absolute))
+                        {
+                            try
+                            {
+                                var ranges = GetFontRangesFromFile(absolute);
+                                if(!string.IsNullOrEmpty(ranges))
+                                {
+                                    viewModel.FontRanges = ranges;
+                                }
+                            }
+                            catch(Exception ex)
+                            {
+                                _dialogService.ShowMessage($"Error reading font character file:\n{ex}");
+                            }
+                        }
+                    }
+                }
+                break;
             case nameof(viewModel.FontRanges):
                 var isValid = BmfcSave.GetIfIsValidRange(viewModel.FontRanges);
                 var didFixChangeThings = false;
@@ -223,5 +278,45 @@ class MainPropertiesWindowPlugin : InternalPlugin
     private void HandleCloseClicked(object sender, EventArgs e)
     {
         _guiCommands.RemoveControl(control);
+    }
+
+    private static string GetFontRangesFromFile(string absoluteFile)
+    {
+        var text = File.ReadAllText(absoluteFile);
+        var codepoints = new HashSet<int>();
+        for(int i=0; i<text.Length; i++)
+        {
+            int codepoint = char.ConvertToUtf32(text, i);
+            codepoints.Add(codepoint);
+            if(char.IsHighSurrogate(text[i]))
+            {
+                i++;
+            }
+        }
+
+        var ordered = codepoints.OrderBy(item => item).ToList();
+        if(ordered.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var ranges = new List<string>();
+        int start = ordered[0];
+        int previous = ordered[0];
+        for(int index = 1; index < ordered.Count; index++)
+        {
+            var current = ordered[index];
+            if(current == previous + 1)
+            {
+                previous = current;
+            }
+            else
+            {
+                ranges.Add(start == previous ? start.ToString() : $"{start}-{previous}");
+                start = previous = current;
+            }
+        }
+        ranges.Add(start == previous ? start.ToString() : $"{start}-{previous}");
+        return string.Join(",", ranges);
     }
 }
