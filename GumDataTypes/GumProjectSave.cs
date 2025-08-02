@@ -80,6 +80,10 @@ public class GumProjectSave
 
     public string FontRanges { get; set; } = "32-126,160-255";
 
+    public bool UseFontCharacterFile { get; set; } = false;
+    public string FontCharacterFile { get; set; }
+        = null;
+
     public int FontSpacingVertical { get; set; } = 1;
     public int FontSpacingHorizontal { get; set; } = 1;
 

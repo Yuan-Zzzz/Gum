@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -16,6 +17,11 @@ namespace Gum.Gui.Controls
     {
         public event EventHandler CloseClicked;
 
+        InstanceMember fontFileMember;
+        InstanceMember fontRangesMember;
+        MemberCategory fontFileCategory;
+        bool isViewModelHooked;
+
         public ProjectPropertiesViewModel ViewModel
         {
             get
@@ -26,9 +32,21 @@ namespace Gum.Gui.Controls
             {
                 if(value != DataGrid.Instance)
                 {
+                    if(DataGrid.Instance is ProjectPropertiesViewModel oldVm && isViewModelHooked)
+                    {
+                        oldVm.PropertyChanged -= HandleViewModelPropertyChanged;
+                        isViewModelHooked = false;
+                    }
+
                     DataGrid.Instance = value;
 
                     UpdateToInstance();
+
+                    if(value != null)
+                    {
+                        value.PropertyChanged += HandleViewModelPropertyChanged;
+                        isViewModelHooked = true;
+                    }
                 }
             }
         }
@@ -41,6 +59,14 @@ namespace Gum.Gui.Controls
         private void CancelButtonClicked(object sender, RoutedEventArgs e)
         {
             CloseClicked?.Invoke(this, null);
+        }
+
+        private void HandleViewModelPropertyChanged(object sender, PropertyChangedEventArgs e)
+        {
+            if(e.PropertyName == nameof(ProjectPropertiesViewModel.UseFontCharacterFile))
+            {
+                RefreshFontFileVisibility();
+            }
         }
 
         private void UpdateToInstance()
@@ -64,6 +90,8 @@ namespace Gum.Gui.Controls
             DataGrid.MoveMemberToCategory(nameof(ViewModel.SinglePixelTextureBottom), "Single Pixel Texture");
 
             DataGrid.MoveMemberToCategory(nameof(ViewModel.FontRanges), "Font Generation");
+            DataGrid.MoveMemberToCategory(nameof(ViewModel.UseFontCharacterFile), "Font Generation");
+            DataGrid.MoveMemberToCategory(nameof(ViewModel.FontCharacterFile), "Font Generation");
             DataGrid.MoveMemberToCategory(nameof(ViewModel.FontSpacingHorizontal), "Font Generation");
             DataGrid.MoveMemberToCategory(nameof(ViewModel.FontSpacingVertical), "Font Generation");
 
@@ -97,6 +125,10 @@ namespace Gum.Gui.Controls
                     {
                         member.PreferredDisplayer = typeof(FileSelectionDisplay);
                     }
+                    else if(member.Name == nameof(ViewModel.FontCharacterFile))
+                    {
+                        member.PreferredDisplayer = typeof(FileSelectionDisplay);
+                    }
                 }
 
                 var isUpdatingMember = category.Members.FirstOrDefault(item => item.Name == nameof(ViewModel.IsUpdatingFromModel));
@@ -107,6 +139,44 @@ namespace Gum.Gui.Controls
             }
 
             bool IsColor(InstanceMember member) => member.PropertyType.Name == "Microsoft.Xna.Framework.Color" || member.PropertyType.Name == "Color";
+
+            fontFileMember = DataGrid.GetInstanceMember(nameof(ViewModel.FontCharacterFile));
+            fontRangesMember = DataGrid.GetInstanceMember(nameof(ViewModel.FontRanges));
+            fontFileCategory = fontFileMember?.Category;
+
+            RefreshFontFileVisibility();
+        }
+
+        private void RefreshFontFileVisibility()
+        {
+            if(fontFileMember == null || fontRangesMember == null || fontFileCategory == null)
+            {
+                return;
+            }
+
+            if(ViewModel?.UseFontCharacterFile == true)
+            {
+                if(!fontFileCategory.Members.Contains(fontFileMember))
+                {
+                    fontFileCategory.Members.Add(fontFileMember);
+                }
+                fontRangesMember.IsReadOnly = true;
+            }
+            else
+            {
+                if(fontFileCategory.Members.Contains(fontFileMember))
+                {
+                    fontFileCategory.Members.Remove(fontFileMember);
+                }
+                fontRangesMember.IsReadOnly = false;
+            }
+
+            var fontRangeCategory = fontRangesMember.Category;
+            if(fontRangeCategory != null)
+            {
+                fontRangeCategory.Members.Remove(fontRangesMember);
+                fontRangeCategory.Members.Add(fontRangesMember);
+            }
         }
 
         
