@@ -46,7 +46,7 @@ public abstract class RangeBase :
     // parent is re-assigned after the Slider is created. Instead we should look for an explicit
     // track:
     InteractiveGue explicitTrack;
-    protected InteractiveGue? Track => explicitTrack ?? 
+    public InteractiveGue? Track => explicitTrack ?? 
         // tolerate this so users can create and assign Visual later
         thumb?.Visual.EffectiveParentGue as InteractiveGue;
 
@@ -406,7 +406,7 @@ public abstract class RangeBase :
     private void HandleTrackHover(object? sender, EventArgs e)
     {
         var cursor = MainCursor;
-        if (cursor.WindowPushed == Track && cursor.WindowOver != thumb?.Visual)
+        if (cursor.WindowPushed == Track && cursor.VisualOver != thumb?.Visual)
         {
             // Should we be respecting MoveToPoint?
 

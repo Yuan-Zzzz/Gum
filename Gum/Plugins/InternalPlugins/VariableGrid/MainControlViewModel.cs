@@ -94,6 +94,18 @@ namespace Gum.Plugins.VariableGrid
 
         #endregion
 
+        public Visibility HasCategoryNotification
+        {
+            get => Get<Visibility>();
+            set => Set(value);
+        }
+
+        public string CategoryNotification
+        {
+            get => Get<string>();
+            set => Set(value);
+        }
+
         public Visibility ShowVariableGrid
         {
             //get => Visibility.Hidden;
@@ -135,7 +147,7 @@ namespace Gum.Plugins.VariableGrid
             _editVariableService = editVariableService;
         }
 
-        private void HandleDeleteVariableClicked(object sender, RoutedEventArgs e)
+        private void HandleDeleteVariableClicked(object? sender, RoutedEventArgs e)
         {
             if(BehaviorSave != null)
             {
@@ -143,7 +155,7 @@ namespace Gum.Plugins.VariableGrid
             }
         }
 
-        private void HandleEditVariableClicked(object sender, RoutedEventArgs e)
+        private void HandleEditVariableClicked(object? sender, RoutedEventArgs e)
         {
             var editModes = 
                 _editVariableService.GetAvailableEditModeFor(SelectedBehaviorVariable, BehaviorSave);

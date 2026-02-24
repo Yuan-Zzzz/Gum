@@ -1,21 +1,22 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
+﻿using Gum.Commands;
+using Gum.Converters;
 using Gum.DataTypes;
-using Gum.Managers;
-using Gum.DataTypes.Variables;
-using Gum.Plugins;
-using Gum.ToolStates;
-using Gum.PropertyGridHelpers;
 using Gum.DataTypes.Behaviors;
-using System.ComponentModel;
-using Gum.Commands;
+using Gum.DataTypes.Variables;
+using Gum.Managers;
+using Gum.Plugins;
+using Gum.PropertyGridHelpers;
+using Gum.RenderingLibrary;
+using Gum.Services;
+using Gum.ToolStates;
 using Gum.Wireframe;
 using GumRuntime;
-using Gum.Converters;
-using Gum.RenderingLibrary;
 using RenderingLibrary;
-using Gum.Services;
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Linq;
+using ToolsUtilities;
 
 namespace Gum.ToolCommands;
 
@@ -29,15 +30,19 @@ public class ElementCommands : IElementCommands
     private readonly IVariableInCategoryPropagationLogic _variableInCategoryPropagationLogic;
     private readonly IWireframeObjectManager _wireframeObjectManager;
     private readonly PluginManager _pluginManager;
+    private readonly IProjectManager _projectManager;
+    private readonly IProjectState _projectState;
 
     #endregion
 
-    public ElementCommands(ISelectedState selectedState, 
-        IGuiCommands guiCommands, 
+    public ElementCommands(ISelectedState selectedState,
+        IGuiCommands guiCommands,
         IFileCommands fileCommands,
         IVariableInCategoryPropagationLogic variableInCategoryPropagationLogic,
         IWireframeObjectManager wireframeObjectManager,
-        PluginManager pluginManager)
+        PluginManager pluginManager,
+        IProjectManager projectManager,
+        IProjectState projectState)
     {
         _selectedState = selectedState;
         _guiCommands = guiCommands;
@@ -45,6 +50,8 @@ public class ElementCommands : IElementCommands
         _variableInCategoryPropagationLogic = variableInCategoryPropagationLogic;
         _wireframeObjectManager = wireframeObjectManager;
         _pluginManager = pluginManager;
+        _projectManager = projectManager;
+        _projectState = projectState;
     }
 
     #region Instance
@@ -111,7 +118,20 @@ public class ElementCommands : IElementCommands
         return instanceSave;
     }
 
+    public string GetUniqueNameForNewInstance(ElementSave elementSaveForNewInstance, ElementSave containerForNewInstance)
+    {
+#if DEBUG
+        if (elementSaveForNewInstance == null)
+        {
+            throw new ArgumentNullException("elementSave");
+        }
+#endif
+        // remove the path - we dont want folders to be part of the name
+        string name = FileManager.RemovePath(elementSaveForNewInstance.Name) + "Instance";
+        IEnumerable<string> existingNames = containerForNewInstance.Instances.Select(i => i.Name);
 
+        return StringFunctions.MakeStringUnique(name, existingNames);
+    }
 
     #endregion
 
@@ -196,7 +216,7 @@ public class ElementCommands : IElementCommands
 
     public void SortVariables()
     {
-        var gumProject = GumState.Self.ProjectState.GumProjectSave;
+        var gumProject = _projectState.GumProjectSave;
 
         foreach (var elementSave in gumProject.AllElements)
         {
@@ -258,7 +278,7 @@ public class ElementCommands : IElementCommands
 
             foreach (InstanceSave instance in selectedInstances)
             {
-                bool shouldSkip = ShouldSkipDraggingMovementOn(instance);
+                bool shouldSkip = instance.Locked || ShouldSkipDraggingMovementOn(instance);
 
                 if (!shouldSkip)
                 {
@@ -485,7 +505,7 @@ public class ElementCommands : IElementCommands
             var ipso = _wireframeObjectManager.GetSelectedRepresentation();
             ipso.GetFileWidthAndHeightOrDefault(out fileWidth, out fileHeight);
             ipso.GetParentWidthAndHeight(
-                ProjectManager.Self.GumProjectSave.DefaultCanvasWidth, ProjectManager.Self.GumProjectSave.DefaultCanvasHeight,
+                _projectManager.GumProjectSave.DefaultCanvasWidth, _projectManager.GumProjectSave.DefaultCanvasHeight,
                 out parentWidth, out parentHeight);
 
             var unitsVariable = UnitConverter.ConvertToGeneralUnit(unitsVariableAsObject);
@@ -589,7 +609,7 @@ public class ElementCommands : IElementCommands
                 Value = null
 #if GUM
 ,
-                CustomTypeConverter = new Gum.PropertyGridHelpers.Converters.AvailableStatesConverter(category.Name)
+                CustomTypeConverter = new Gum.PropertyGridHelpers.Converters.AvailableStatesConverter(category.Name, _selectedState)
 #endif
             });
 
@@ -634,6 +654,8 @@ public class ElementCommands : IElementCommands
         instanceSave.BaseType = type ?? StandardElementsManager.Self.DefaultType;
         behaviorToAddTo.RequiredInstances.Add(instanceSave);
 
+        _pluginManager.BehaviorInstanceAdd(behaviorToAddTo, instanceSave);
+
         _guiCommands.RefreshElementTreeView(behaviorToAddTo);
 
         _wireframeObjectManager.RefreshAll(true);
@@ -677,7 +699,7 @@ public class ElementCommands : IElementCommands
 
     public void AddBehaviorTo(string behaviorName, ComponentSave componentSave, bool performSave = true)
     {
-        var project = ProjectManager.Self.GumProjectSave;
+        var project = _projectManager.GumProjectSave;
         var behaviorSave = project.Behaviors.FirstOrDefault(item => item.Name == behaviorName);
 
         if(behaviorSave != null)

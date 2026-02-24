@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -111,24 +112,31 @@ namespace WpfDataUi.Controls
 
         List<ToggleButton> toggleButtons = new List<ToggleButton>();
 
-        InstanceMember mInstanceMember;
+        InstanceMember? _instanceMember;
 
-        public InstanceMember InstanceMember
+        public InstanceMember? InstanceMember
         {
             get
             {
-                return mInstanceMember;
+                return _instanceMember;
             }
             set
             {
-                var didChange = mInstanceMember != value;
-                mInstanceMember = value;
+                var didChange = _instanceMember != value;
+                if (_instanceMember != null && didChange)
+                {
+                    _instanceMember.PropertyChanged -= HandlePropertyChange;
+                }
+                _instanceMember = value;
+                if (_instanceMember != null && didChange)
+                {
+                    _instanceMember.PropertyChanged += HandlePropertyChange;
+                }
                 Refresh();
                 if(didChange)
                 {
                     RefreshAllContextMenus(true);
                 }
-
             }
         }
 
@@ -312,6 +320,14 @@ namespace WpfDataUi.Controls
             }
         }
 
+        private void HandlePropertyChange(object? sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(InstanceMember.Value))
+            {
+                this.Refresh();
+            }
+        }
+
         private void RefreshIsEnabled()
         {
             //if (lastApplyValueResult == ApplyValueResult.NotSupported)
@@ -391,7 +407,7 @@ namespace WpfDataUi.Controls
             return ApplyValueResult.Success;
         }
 
-        private void HandleToggleClick(object sender, RoutedEventArgs e)
+        private void HandleToggleClick(object? sender, RoutedEventArgs e)
         {
             var toggleButtonClicked = sender as ToggleButton;
 

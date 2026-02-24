@@ -1,5 +1,6 @@
 ﻿using Gum.DataTypes;
 using Gum.Managers;
+using Gum.Plugins.InternalPlugins.VariableGrid;
 using Gum.PropertyGridHelpers;
 using Gum.Services.Dialogs;
 using System.IO;
@@ -8,7 +9,7 @@ namespace Gum.Dialogs;
 
 public class RenameElementDialogViewModel : GetUserStringDialogBaseViewModel
 {
-    private readonly SetVariableLogic _setVariableLogic;
+    private readonly ISetVariableLogic _setVariableLogic;
     private readonly INameVerifier _nameVerifier;
 
     public override string? Title => "Rename Element";
@@ -16,7 +17,7 @@ public class RenameElementDialogViewModel : GetUserStringDialogBaseViewModel
     
     public ElementSave? ElementSave { get => Get<ElementSave?>(); set => Set(value); }
 
-    public RenameElementDialogViewModel(SetVariableLogic setVariableLogic,
+    public RenameElementDialogViewModel(ISetVariableLogic setVariableLogic,
         INameVerifier nameVerifier)
     {
         _setVariableLogic = setVariableLogic;
@@ -47,8 +48,8 @@ public class RenameElementDialogViewModel : GetUserStringDialogBaseViewModel
             }
         };
     }
-    
-    protected override void OnAffirmative()
+
+    public override void OnAffirmative()
     {
         if (Value is null || ElementSave is null || Error is not null) return;
         

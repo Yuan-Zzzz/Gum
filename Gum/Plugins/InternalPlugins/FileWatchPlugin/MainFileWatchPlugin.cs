@@ -23,8 +23,8 @@ public class MainFileWatchPlugin : InternalPlugin
     FileWatchViewModel viewModel;
 
     PluginTab pluginTab;
-    System.Windows.Forms.ToolStripMenuItem showFileWatchMenuItem;
-    private FileWatchManager _fileWatchManager;
+    System.Windows.Controls.MenuItem showFileWatchMenuItem;
+    private IFileWatchManager _fileWatchManager;
     private FileWatchLogic _fileWatchLogic;
 
     #endregion
@@ -36,8 +36,8 @@ public class MainFileWatchPlugin : InternalPlugin
         viewModel = new FileWatchViewModel();
         control.DataContext = viewModel;
 
-        _fileWatchManager = Locator.GetRequiredService<FileWatchManager>(); 
-        _fileWatchLogic = FileWatchLogic.Self;
+        _fileWatchManager = Locator.GetRequiredService<IFileWatchManager>();
+        _fileWatchLogic = Locator.GetRequiredService<FileWatchLogic>();
 
         pluginTab = _tabManager.AddControl(control, "File Watch", TabLocation.RightBottom);
         pluginTab.Hide();
@@ -105,15 +105,15 @@ public class MainFileWatchPlugin : InternalPlugin
 
     private void HandleTabShown()
     {
-        showFileWatchMenuItem.Text = "Hide File Watch";
+        showFileWatchMenuItem.Header = "Hide File Watch";
     }
 
     private void HandleTabHidden()
     {
-        showFileWatchMenuItem.Text = "Show File Watch";
+        showFileWatchMenuItem.Header = "Show File Watch";
     }
 
-    private void HandleShowFileWatch(object? sender, EventArgs e)
+    private void HandleShowFileWatch(object? sender, System.Windows.RoutedEventArgs e)
     {
         pluginTab.IsVisible = !pluginTab.IsVisible;
         if(pluginTab.IsVisible)

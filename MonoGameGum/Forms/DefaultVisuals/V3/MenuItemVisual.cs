@@ -108,6 +108,7 @@ public class MenuItemVisual : InteractiveGue
 
     public MenuItemVisual(bool fullInstantiation = true, bool tryCreateFormsObject = true) : base(new InvisibleRenderable())
     {
+        this.HasEvents = true;
         X = 0;
         Y = 0;
         Width = 0;
@@ -143,6 +144,7 @@ public class MenuItemVisual : InteractiveGue
         ContainerInstance.HeightUnits = global::Gum.DataTypes.DimensionUnitType.RelativeToChildren;
         ContainerInstance.Width = 0f;
         ContainerInstance.WidthUnits = global::Gum.DataTypes.DimensionUnitType.RelativeToChildren;
+        ContainerInstance.HasEvents = false;
         this.AddChild(ContainerInstance);
 
         TextInstance = new TextRuntime();
@@ -259,5 +261,5 @@ public class MenuItemVisual : InteractiveGue
     Gum.Forms.VisualTemplate DefaultScrollVisualTemplate => new (() =>
                 new ScrollViewerVisualSizedToChildren(fullInstantiation: true, tryCreateFormsObject: false));
 
-    public MenuItem FormsControl => FormsControlAsObject as MenuItem;
+    public MenuItem FormsControl => (MenuItem)FormsControlAsObject;
 }

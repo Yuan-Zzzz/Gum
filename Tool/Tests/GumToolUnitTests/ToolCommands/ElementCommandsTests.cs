@@ -1,5 +1,6 @@
 ﻿using Gum.Commands;
 using Gum.DataTypes;
+using Gum.Managers;
 using Gum.Plugins;
 using Gum.PropertyGridHelpers;
 using Gum.ToolCommands;
@@ -25,6 +26,10 @@ public class ElementCommandsTests
     Mock<IVariableInCategoryPropagationLogic> _variableInCategoryPropagationLogic;
     Mock<IWireframeObjectManager> _wireframeObjectManager;
     Mock<PluginManager> _pluginManager;
+    Mock<IProjectManager> _projectManager;
+    Mock<IProjectState> _projectState;
+
+    ObjectFinder _objectFinder => ObjectFinder.Self;
 
     public ElementCommandsTests()
     {
@@ -34,6 +39,8 @@ public class ElementCommandsTests
         _variableInCategoryPropagationLogic = new Mock<IVariableInCategoryPropagationLogic>();
         _wireframeObjectManager = new Mock<IWireframeObjectManager>();
         _pluginManager = new Mock<PluginManager>();
+        _projectManager = new Mock<IProjectManager>();
+        _projectState = new Mock<IProjectState>();
 
         _sut = new ElementCommands(
             _selectedState.Object,
@@ -41,7 +48,9 @@ public class ElementCommandsTests
             _fileCommands.Object,
             _variableInCategoryPropagationLogic.Object,
             _wireframeObjectManager.Object,
-            _pluginManager.Object);
+            _pluginManager.Object,
+            _projectManager.Object,
+            _projectState.Object);
     }
 
     [Fact]
@@ -68,4 +77,50 @@ public class ElementCommandsTests
             Times.Once);
     }
 
+    [Fact]
+    public void GetUniqueNameForNewInstance_ShouldReturnDefaultName()
+    {
+        GumProjectSave project = new GumProjectSave();
+        _objectFinder.GumProjectSave = project;
+
+        StandardElementSave text = new()
+        {
+            Name = "Text"
+        };
+        _objectFinder.GumProjectSave.StandardElements.Add(text);
+
+        ComponentSave component = new();
+
+
+        // act
+        string name = _sut.GetUniqueNameForNewInstance(text, component);
+
+        // assert
+        name.ShouldBe("TextInstance");
+    }
+
+    [Fact]
+    public void GetUniqueNameForNewInstance_ShouldIncrement_OnMatchingName()
+    {
+        GumProjectSave project = new GumProjectSave();
+        _objectFinder.GumProjectSave = project;
+
+        StandardElementSave text = new()
+        {
+            Name = "Text"
+        };
+        _objectFinder.GumProjectSave.StandardElements.Add(text);
+
+        ComponentSave component = new();
+        component.Instances.Add(new InstanceSave
+        {
+            Name = "TextInstance"
+        });
+
+        // act
+        string name = _sut.GetUniqueNameForNewInstance(text, component);
+
+        // assert
+        name.ShouldBe("TextInstance1");
+    }
 }

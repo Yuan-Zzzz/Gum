@@ -77,10 +77,10 @@ public class MainVariableGridPlugin : InternalPlugin
     }
     private void HandleElementRenamed(ElementSave save, string arg2)
     {
-        PropertyGridManager.Self.RefreshVariablesDataGridValues();
+        _propertyGridManager.RefreshVariablesDataGridValues();
     }
 
-    private void HandleVariableSet(ElementSave element, InstanceSave instance, string strippedName, object oldValue)
+    private void HandleVariableSet(ElementSave element, InstanceSave? instance, string strippedName, object? oldValue)
     {
         _propertyGridManager.HandleVariableSet(element, instance, strippedName, oldValue);
     }
@@ -117,10 +117,14 @@ public class MainVariableGridPlugin : InternalPlugin
 
     private void HandleInstanceSelected(ElementSave save1, InstanceSave save2)
     {
-        _propertyGridManager.RefreshEntireGrid(force: true);
+        _propertyGridManager.RefreshEntireGrid(
+            // When an instance is selected in a new component, the state and instance are both
+            // selected. Don't force it here because if so, it forces a double select on the instance
+            // which is raised after the state.
+            force: false);
     }
 
-    private void MainVariableGridPlugin_ReactToStateSaveCategorySelected(StateSaveCategory obj)
+    private void MainVariableGridPlugin_ReactToStateSaveCategorySelected(StateSaveCategory? obj)
     {
         _propertyGridManager.RefreshEntireGrid(force: true);
 
@@ -131,19 +135,19 @@ public class MainVariableGridPlugin : InternalPlugin
         _propertyGridManager.RefreshEntireGrid(force: true);
     }
 
-    private void HandleStateSelected(StateSave save)
+    private void HandleStateSelected(StateSave? save)
     {
         _propertyGridManager.RefreshEntireGrid(force: true);
     }
 
-    private void HandleCustomStateSelected(StateSave save)
+    private void HandleCustomStateSelected(StateSave? save)
     {
         // custom states are states where an animation is playing. This slows down
         // the animation considerably so let's not do it:
         //PropertyGridManager.Self.RefreshVariablesDataGridValues();
     }
 
-    private void HandleTreeNodeSelected(TreeNode node)
+    private void HandleTreeNodeSelected(TreeNode? node)
     {
         var selectedState = _selectedState;
         var shouldShowButton = (selectedState.SelectedBehavior != null ||
@@ -153,7 +157,7 @@ public class MainVariableGridPlugin : InternalPlugin
         {
             shouldShowButton = _selectedState.SelectedInstance == null;
         }
-        PropertyGridManager.Self.VariableViewModel.AddVariableButtonVisibility =
+        _propertyGridManager.VariableViewModel.AddVariableButtonVisibility =
             shouldShowButton.ToVisibility();
 
         if(selectedState.SelectedBehavior == null && selectedState.SelectedInstance == null && selectedState.SelectedElement == null)

@@ -4,6 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:local="clr-namespace:TextureCoordinateSelectionPlugin.Views"
+    xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:specializedxnacontrols="clr-namespace:FlatRedBall.SpecializedXnaControls;assembly=FlatRedBall.SpecializedXnaControls"
     xmlns:wf="clr-namespace:System.Windows.Forms;assembly=System.Windows.Forms"
@@ -17,9 +18,21 @@
         </Grid.RowDefinitions>
         <StackPanel Orientation="Horizontal">
 
-            <Button Content="-" MinWidth="24" Click="HandleMinusClicked"/>
-            <ComboBox ItemsSource="{Binding AvailableZoomLevels}" SelectedItem="{Binding SelectedZoomLevel}"/>
-            <Button Content="+" MinWidth="24" Click="HandlePlusClicked"/>
+            <Button
+                x:Name="MinusButton"
+                MinWidth="24"
+                materialDesign:RippleAssist.IsDisabled="True"
+                Click="HandleMinusClicked"
+                Content="-"
+                Style="{StaticResource MaterialDesignToolForegroundButton}" />
+            <ComboBox ItemsSource="{Binding AvailableZoomLevels}" SelectedItem="{Binding SelectedZoomLevel}" />
+            <Button
+                x:Name="PlusButton"
+                MinWidth="24"
+                materialDesign:RippleAssist.IsDisabled="True"
+                Click="HandlePlusClicked"
+                Content="+"
+                Style="{StaticResource MaterialDesignToolForegroundButton}" />
 
 
             <CheckBox
@@ -35,21 +48,32 @@
                 IsEnabled="{Binding IsSnapToGridComboBoxEnabled}"
                 ItemsSource="{Binding AvailableSnapToGridValues}"
                 SelectedItem="{Binding SelectedSnapToGridValue}" />
+
+            <ComboBox
+                Margin="16,0,0,0"
+                MinWidth="80"
+                Visibility="{Binding ExposedSourceDropdownVisibility}"
+                ItemsSource="{Binding AvailableExposedSources}"
+                SelectedItem="{Binding SelectedExposedSource}"
+                DisplayMemberPath="SourceObjectName" />
         </StackPanel>
         <Grid Grid.Row="1">
             <Grid.RowDefinitions>
-                <RowDefinition Height="*"/>
-                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <WindowsFormsHost KeyDown="HandleKeyDown">
                 <specializedxnacontrols:ImageRegionSelectionControl x:Name="InnerControl" />
             </WindowsFormsHost>
-            <ScrollBar Grid.Column="1" x:Name="VerticalScrollBar"/>
-            <ScrollBar Grid.Row="1" Orientation="Horizontal" x:Name="HorizontalScrollBar"/>
+            <ScrollBar x:Name="VerticalScrollBar" Grid.Column="1" />
+            <ScrollBar
+                x:Name="HorizontalScrollBar"
+                Grid.Row="1"
+                Orientation="Horizontal" />
         </Grid>
     </Grid>
 </UserControl>

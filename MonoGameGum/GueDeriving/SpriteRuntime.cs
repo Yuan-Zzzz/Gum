@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -15,14 +16,14 @@ namespace MonoGameGum.GueDeriving;
 public class SpriteRuntime : global::Gum.Wireframe.BindableGue, IRenderTargetTextureReferencer
 {
     #region Contained Sprite
-    RenderingLibrary.Graphics.Sprite mContainedSprite;
-    RenderingLibrary.Graphics.Sprite ContainedSprite
+    Sprite mContainedSprite;
+    Sprite ContainedSprite
     {
         get
         {
             if (mContainedSprite == null)
             {
-                mContainedSprite = this.RenderableComponent as RenderingLibrary.Graphics.Sprite;
+                mContainedSprite = (Sprite)this.RenderableComponent;
             }
             return mContainedSprite;
         }
@@ -170,6 +171,40 @@ public class SpriteRuntime : global::Gum.Wireframe.BindableGue, IRenderTargetTex
             }
         }
     }
+
+    #region AnimationChain
+
+    public int AnimationChainFrameIndex
+    {
+        get => ContainedSprite.CurrentFrameIndex;
+        set => ContainedSprite.CurrentFrameIndex = value;
+    }
+
+    public double AnimationChainTime
+    {
+        get => ContainedSprite.TimeIntoAnimation;
+        set => ContainedSprite.TimeIntoAnimation = value;
+    }
+
+    public float AnimationChainSpeed
+    {
+        get => ContainedSprite.AnimationSpeed;
+        set => ContainedSprite.AnimationSpeed = value;
+    }
+
+    public bool IsAnimationChainLooping
+    {
+        get => ContainedSprite.IsAnimationChainLooping;
+        set => ContainedSprite.IsAnimationChainLooping = value;
+    }
+
+    public event Action AnimationChainCycled
+    {
+        add => ContainedSprite.AnimationChainCycled += value;
+        remove => ContainedSprite.AnimationChainCycled -= value;
+    }
+
+    #endregion
 
     #region Source File/Texture
 

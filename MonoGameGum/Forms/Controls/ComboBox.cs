@@ -87,10 +87,15 @@ public class ComboBox :
         }
     }
 
+    string _displayMemberPath;
     public string DisplayMemberPath
     {
-        get => listBox.DisplayMemberPath;
-        set => listBox.DisplayMemberPath = value;
+        get => _displayMemberPath;
+        set
+        {
+            _displayMemberPath = value;
+            UpdateToObject(SelectedObject);
+        }
     }
     
     public IList Items
@@ -107,6 +112,8 @@ public class ComboBox :
         }
     }
 
+
+    [Obsolete("Use VisualTemplate")]
     public Type ListBoxItemGumType
     {
         get { return listBox.ListBoxItemGumType; }
@@ -122,6 +129,7 @@ public class ComboBox :
         }
     }
 
+    [Obsolete("Use FrameworkElementTemplate")]
     public Type ListBoxItemFormsType
     {
         get { return listBox.ListBoxItemFormsType; }
@@ -390,9 +398,9 @@ public class ComboBox :
 
 
         var clickedOnThisOrChild =
-            cursor.WindowOver == this.Visual ||
-            (cursor.WindowOver != null && cursor.WindowOver.IsInParentChain(this.Visual)) ||
-            (cursor.WindowOver != null && cursor.WindowOver.IsInParentChain(this.listBox.Visual))
+            cursor.VisualOver == this.Visual ||
+            (cursor.VisualOver != null && cursor.VisualOver.IsInParentChain(this.Visual)) ||
+            (cursor.VisualOver != null && cursor.VisualOver.IsInParentChain(this.listBox.Visual))
             ;
 
         if (clickedOnThisOrChild == false)
@@ -420,7 +428,9 @@ public class ComboBox :
         if (Visual.EffectiveManagers != null && listBox.IsVisible)
         {
             listBox.IsVisible = false;
-            listBox.Visual.RemoveFromManagers();
+            // Don't do this, because doing so removes the bindings
+            //listBox.Visual.RemoveFromManagers();
+            listBox.Visual.Parent = null;
 
             listBox.Visual.XUnits = listBoxXUnits;
             listBox.Visual.YUnits = listBoxYUnits;
@@ -474,7 +484,19 @@ public class ComboBox :
 
     public virtual void UpdateToObject(object o)
     {
-        coreTextObject.RawText = o?.ToString();
+        if(!string.IsNullOrEmpty(DisplayMemberPath ))
+        {
+            var display = o
+                ?.GetType()
+                ?.GetProperty(DisplayMemberPath)
+                ?.GetValue(o, null) as string;
+
+            coreTextObject.RawText = display?.ToString();
+        }
+        else
+        {
+            coreTextObject.RawText = o?.ToString();
+        }
     }
 
     private void HandleListBoxItemPushed(object sender, EventArgs args)
@@ -753,4 +775,4 @@ public class ComboBox :
 #endif
 
 #endregion
-    }
+}

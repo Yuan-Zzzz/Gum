@@ -8,28 +8,33 @@ using Gum.Commands;
 using Gum.Services.Dialogs;
 using ToolsUtilities;
 using System.Linq;
+using Gum.Plugins.InternalPlugins.VariableGrid;
 
 namespace Gum.Plugins.ImportPlugin.Manager;
 
-public class ImportLogic
+public class ImportLogic : IImportLogic
 {
     private readonly ISelectedState _selectedState;
     private readonly IGuiCommands _guiCommands;
     private readonly IFileCommands _fileCommands;
     private readonly IDialogService _dialogService;
+    private readonly IProjectManager _projectManager;
+    private readonly StandardElementsManagerGumTool _standardElementsManagerGumTool;
 
-    public ImportLogic(ISelectedState selectedState, IGuiCommands guiCommands, IFileCommands fileCommands, IDialogService dialogService)
+    public ImportLogic(ISelectedState selectedState, IGuiCommands guiCommands, IFileCommands fileCommands, IDialogService dialogService, IProjectManager projectManager, StandardElementsManagerGumTool standardElementsManagerGumTool)
     {
         _selectedState = selectedState;
         _guiCommands = guiCommands;
         _fileCommands = fileCommands;
         _dialogService = dialogService;
+        _projectManager = projectManager;
+        _standardElementsManagerGumTool = standardElementsManagerGumTool;
     }
 
     public ScreenSave? ImportScreen(FilePath filePath, string desiredDirectory = null, bool saveProject = true)
     {
         string screensOrComponents = "Screens";
-        var elementReferences = ProjectManager.Self.GumProjectSave.ScreenReferences;
+        var elementReferences = _projectManager.GumProjectSave.ScreenReferences;
 
         bool shouldAdd = DetermineIfShouldAdd(ref filePath, ref desiredDirectory, screensOrComponents);
 
@@ -53,7 +58,7 @@ public class ImportLogic
             elementReferences.Add(new ElementReference { Name = screenSave!.Name, ElementType = ElementType.Screen });
             elementReferences.Sort((first, second) => first.Name.CompareTo(second.Name));
 
-            var screens = ProjectManager.Self.GumProjectSave.Screens;
+            var screens = _projectManager.GumProjectSave.Screens;
             screens.Add(screenSave);
             screens.Sort((first, second) => first.Name.CompareTo(second.Name));
 
@@ -71,7 +76,7 @@ public class ImportLogic
     public ComponentSave? ImportComponent(FilePath filePath, string desiredDirectory = null, bool saveProject = true)
     {
         string screensOrComponents = "Components";
-        var elementReferences = ProjectManager.Self.GumProjectSave.ComponentReferences;
+        var elementReferences = _projectManager.GumProjectSave.ComponentReferences;
 
         bool shouldAdd = DetermineIfShouldAdd(ref filePath, ref desiredDirectory, screensOrComponents);
 
@@ -95,12 +100,12 @@ public class ImportLogic
             elementReferences.Add(new ElementReference { Name = componentSave!.Name, ElementType = ElementType.Component });
             elementReferences.Sort((first, second) => first.Name.CompareTo(second.Name));
 
-            var components = ProjectManager.Self.GumProjectSave.Components;
+            var components = _projectManager.GumProjectSave.Components;
             components.Add(componentSave);
             components.Sort((first, second) => first.Name.CompareTo(second.Name));
 
             componentSave.InitializeDefaultAndComponentVariables();
-            StandardElementsManagerGumTool.Self.FixCustomTypeConverters(componentSave);
+            _standardElementsManagerGumTool.FixCustomTypeConverters(componentSave);
 
             DoAfterImportLogic(saveProject, componentSave);
 
@@ -112,7 +117,7 @@ public class ImportLogic
 
     private void DoAfterImportLogic(bool saveProject, ElementSave screenSave)
     {
-        StandardElementsManagerGumTool.Self.FixCustomTypeConverters(screenSave);
+        _standardElementsManagerGumTool.FixCustomTypeConverters(screenSave);
 
         if (saveProject)
         {
@@ -127,7 +132,7 @@ public class ImportLogic
     {
         var shouldAdd = true;
         desiredDirectory = desiredDirectory ?? FileManager.GetDirectory(
-            ProjectManager.Self.GumProjectSave.FullFileName) + $"{screensOrComponents}/";
+            _projectManager.GumProjectSave.FullFileName) + $"{screensOrComponents}/";
 
         if (!FileManager.IsRelativeTo(filePath.FullPath, desiredDirectory))
         {
@@ -164,7 +169,7 @@ public class ImportLogic
         var shouldAdd = true;
 
         desiredDirectory = desiredDirectory ?? FileManager.GetDirectory(
-            ProjectManager.Self.GumProjectSave.FullFileName) + "Behaviors/";
+            _projectManager.GumProjectSave.FullFileName) + "Behaviors/";
 
         if (!FileManager.IsRelativeTo(filePath.FullPath, desiredDirectory))
         {
@@ -200,11 +205,11 @@ public class ImportLogic
 
             var behaviorSave = FileManager.XmlDeserialize<BehaviorSave>(filePath.FullPath);
 
-            var behaviorReferences = ProjectManager.Self.GumProjectSave.BehaviorReferences;
+            var behaviorReferences = _projectManager.GumProjectSave.BehaviorReferences;
             behaviorReferences.Add(new BehaviorReference { Name = behaviorSave.Name });
             behaviorReferences.Sort((first, second) => first.Name.CompareTo(second.Name));
 
-            var behaviors = ProjectManager.Self.GumProjectSave.Behaviors;
+            var behaviors = _projectManager.GumProjectSave.Behaviors;
             behaviors.Add(behaviorSave);
             behaviors.Sort((first, second) => first.Name.CompareTo(second.Name));
 

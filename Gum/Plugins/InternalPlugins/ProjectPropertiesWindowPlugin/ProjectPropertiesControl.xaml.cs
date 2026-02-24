@@ -43,7 +43,7 @@ public partial class ProjectPropertiesControl : UserControl
         InitializeComponent();
     }
 
-    private void CancelButtonClicked(object sender, RoutedEventArgs e)
+    private void CancelButtonClicked(object? sender, RoutedEventArgs e)
     {
         CloseClicked?.Invoke(this, null);
     }
@@ -60,6 +60,7 @@ public partial class ProjectPropertiesControl : UserControl
 
         DataGrid.MoveMemberToCategory(nameof(ViewModel.ShowOutlines), "Guides");
         DataGrid.MoveMemberToCategory(nameof(ViewModel.ShowCanvasOutline), "Guides");
+        DataGrid.MoveMemberToCategory(nameof(ViewModel.ShowCheckerBackground), "Guides");
 
 
         DataGrid.MoveMemberToCategory(nameof(ViewModel.SinglePixelTextureFile), "Single Pixel Texture");

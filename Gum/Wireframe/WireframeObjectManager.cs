@@ -1,5 +1,6 @@
 using Gum.Commands;
 using Gum.DataTypes;
+using Gum.Localization;
 using Gum.Managers;
 using Gum.Plugins;
 using Gum.RenderingLibrary;
@@ -60,22 +61,25 @@ public partial class WireframeObjectManager : IWireframeObjectManager
     private readonly IDialogService _dialogService;
     private readonly IGuiCommands _guiCommands;
     GraphicalUiElementManager gueManager;
-    private LocalizationManager _localizationManager;
+    private LocalizationService _localizationService;
     private readonly PluginManager _pluginManager;
+    private readonly IProjectState _projectState;
 
     public WireframeObjectManager(FontManager fontManager,
         ISelectedState selectedState,
         IDialogService dialogService,
         IGuiCommands guiCommands,
-        LocalizationManager localizationManager, 
-        PluginManager pluginManager)
+        LocalizationService localizationService,
+        PluginManager pluginManager,
+        IProjectState projectState)
     {
         _fontManager = fontManager;
         _selectedState = selectedState;
         _dialogService = dialogService;
         _guiCommands = guiCommands;
-        _localizationManager = localizationManager;
+        _localizationService = localizationService;
         _pluginManager = pluginManager;
+        _projectState = projectState;
 
         gueManager = new GraphicalUiElementManager();
     }
@@ -207,17 +211,19 @@ public partial class WireframeObjectManager : IWireframeObjectManager
 
                 if(RootGue != null)
                 {
+                    // Font properties are set via SetProperty strings during SetVariablesRecursively
+                    // above. While IsAllLayoutSuspended was true those calls deferred the actual
+                    // disk read and set IsFontDirty on each text element instead of loading fonts
+                    // N times per element. UpdateFontRecursive performs the single deferred load
+                    // now that all properties are at their final values.
                     RootGue.UpdateFontRecursive();
                     RootGue.UpdateLayout();
 
                     gueManager.Add(RootGue);
-                    // what about fonts?
-                    // We recreate missing fonts on startup, so do we need to bother here?
-                    // I'm not sure, but if we do we would call:
                     //FontManager.Self.CreateAllMissingFontFiles(ObjectFinder.Self.GumProjectSave);
 
 
-                    if(_localizationManager.HasDatabase)
+                    if(_localizationService.HasDatabase)
                     {
                         ApplyLocalization();
                     }
@@ -282,9 +288,9 @@ public partial class WireframeObjectManager : IWireframeObjectManager
 
     public void ApplyLocalization()
     {
-        if(_localizationManager.HasDatabase == false)
+        if(_localizationService.HasDatabase == false)
         {
-            throw new InvalidOperationException("Cannot apply localization - the LocalizationManager doesn't have a localization database loaded");
+            throw new InvalidOperationException("Cannot apply localization - the LocalizationService doesn't have a localization database loaded");
         }
 
         var texts = GetTextsRecurisve(RootGue);
@@ -298,7 +304,7 @@ public partial class WireframeObjectManager : IWireframeObjectManager
 
     public void ApplyLocalization(GraphicalUiElement gue, string forcedId = null)
     {
-        var shouldLocalize = GumState.Self.ProjectState.GumProjectSave.ShowLocalizationInGum;
+        var shouldLocalize = _projectState.GumProjectSave.ShowLocalizationInGum;
         //if(gue.Tag is InstanceSave instance)
         //{
         //    var rfv = new RecursiveVariableFinder(_selectedState.SelectedStateSave);
@@ -321,7 +327,7 @@ public partial class WireframeObjectManager : IWireframeObjectManager
             }
 
             // Go through the GraphicalUiElement to kick off a layout adjustment if necessary
-            gue.SetProperty("Text", _localizationManager.Translate(stringId));
+            gue.SetProperty("Text", _localizationService.Translate(stringId));
         }
     }
 
@@ -433,7 +439,7 @@ public partial class WireframeObjectManager : IWireframeObjectManager
         return null;
     }
 
-    public GraphicalUiElement GetRepresentation(InstanceSave instanceSave, List<ElementWithState> elementStack = null)
+    public GraphicalUiElement? GetRepresentation(InstanceSave instanceSave, List<ElementWithState>? elementStack = null)
     {
         if (instanceSave != null)
         {
@@ -577,5 +583,36 @@ public partial class WireframeObjectManager : IWireframeObjectManager
         }
 
         return null;
+    }
+
+    public IEnumerable<GraphicalUiElement> GetAllVisibleElements()
+    {
+        // Return all IPSOs that are visible and valid for selection
+        return AllIpsos.Where(ipso =>
+        {
+            // Skip null elements
+            if (ipso == null)
+                return false;
+
+            // Skip screens - they can't be selected
+            if (ipso.Tag is ScreenSave)
+                return false;
+
+            // Check if visible
+            try
+            {
+                if (ipso is IVisible visibleIpso)
+                {
+                    return visibleIpso.AbsoluteVisible;
+                }
+            }
+            catch
+            {
+                // If we can't determine visibility, include it
+                return true;
+            }
+
+            return true;
+        });
     }
 }

@@ -1,5 +1,6 @@
 ﻿using FlatRedBall.SpecializedXnaControls;
 using Gum.DataTypes;
+using Gum.Managers;
 using Gum.Plugins.BaseClasses;
 using Gum.Plugins.InternalPlugins.EditorTab.Views;
 using Gum.Services;
@@ -17,12 +18,14 @@ public class ScrollbarService
 {
     ScrollBarControlLogic scrollBarControlLogic;
     private readonly ISelectedState _selectedState;
-    private readonly WireframeObjectManager _wireframeObjectManager;
+    private readonly IWireframeObjectManager _wireframeObjectManager;
+    private readonly IProjectManager _projectManager;
 
-    public ScrollbarService()
+    public ScrollbarService(IProjectManager projectManager)
     {
         _selectedState = Locator.GetRequiredService<ISelectedState>();
-        _wireframeObjectManager = Locator.GetRequiredService<WireframeObjectManager>();
+        _wireframeObjectManager = Locator.GetRequiredService<IWireframeObjectManager>();
+        _projectManager = projectManager;
     }
     
     public void HandleElementSelected(ElementSave obj)
@@ -35,11 +38,11 @@ public class ScrollbarService
             ipso = _wireframeObjectManager.GetRepresentation(obj);
         }
 
-        float minX = -ProjectManager.Self.GumProjectSave.DefaultCanvasWidth/2;
-        float maxX = ProjectManager.Self.GumProjectSave.DefaultCanvasWidth;
+        float minX = -_projectManager.GumProjectSave.DefaultCanvasWidth/2;
+        float maxX = _projectManager.GumProjectSave.DefaultCanvasWidth;
 
-        float minY = -ProjectManager.Self.GumProjectSave.DefaultCanvasHeight / 2;
-        float maxY = ProjectManager.Self.GumProjectSave.DefaultCanvasHeight;
+        float minY = -_projectManager.GumProjectSave.DefaultCanvasHeight / 2;
+        float maxY = _projectManager.GumProjectSave.DefaultCanvasHeight;
 
 
         if(ipso != null)

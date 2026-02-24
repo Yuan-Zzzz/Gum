@@ -92,7 +92,6 @@ public class SkiaGumCanvasView : global::SkiaSharp.Views.Maui.Controls.SKCanvasV
     public string SemaphoreTag = "GumSemaphore";
 
     float yPushed;
-    bool isWithinThreshold = false;
 
     Func<Task> customPushEventToRaise;
     Func<Task> customReleaseEventToRaise;
@@ -128,8 +127,8 @@ public class SkiaGumCanvasView : global::SkiaSharp.Views.Maui.Controls.SKCanvasV
     // Device density which is used to divide the height and width request 
     public static float DeviceDensity { get; set; } = 1;
 
-    public static event Action<BindableGue> ElementClicked;
-    public static event Action<BindableGue> ElementPushed;
+    //public static event Action<BindableGue> ElementClicked;
+    //public static event Action<BindableGue> ElementPushed;
 
 
     // There seems to be a bug in MAUI .NET 8 (preview) which will not resize a 
@@ -140,11 +139,13 @@ public class SkiaGumCanvasView : global::SkiaSharp.Views.Maui.Controls.SKCanvasV
 
     #region Events
 
-    public event Action AfterLayoutBeforeDraw;
-    public event Action AfterAutoSizeChanged;
+    public event Action? AfterLayoutBeforeDraw;
+    public event Action? AfterAutoSizeChanged;
 
-    public event Func<Task<bool>> CanProceedFunc;
-    public event Action ReleaseFunc;
+    public event Func<Task<bool>>? CanProceedFunc;
+
+    // This isn't used currently, maybe never? Need to figure out if we ever want to handle clicks...
+    //public event Action ReleaseFunc;
     #endregion
 
     public SkiaGumCanvasView()
@@ -172,21 +173,21 @@ public class SkiaGumCanvasView : global::SkiaSharp.Views.Maui.Controls.SKCanvasV
         }
     }
 
-    void ReleaseSemaphore(int count = 1)
-    {
-        if (ReleaseFunc != null)
-        {
-            ReleaseFunc();
-        }
-        else
-        {
-            ExclusiveUiInteractionSemaphore.Release(count);
-        }
-    }
+    //void ReleaseSemaphore(int count = 1)
+    //{
+    //    if (ReleaseFunc != null)
+    //    {
+    //        ReleaseFunc();
+    //    }
+    //    else
+    //    {
+    //        ExclusiveUiInteractionSemaphore.Release(count);
+    //    }
+    //}
 
     #region Touch-related Logic
 
-    protected virtual async void HandleTouch(object sender, SKTouchEventArgs args)
+    protected virtual async void HandleTouch(object? sender, SKTouchEventArgs args)
     {
         // Maybe we need to adjust this for other devices?
         float threshold = (float)20;
@@ -199,6 +200,7 @@ public class SkiaGumCanvasView : global::SkiaSharp.Views.Maui.Controls.SKCanvasV
         //args.Handled = await TryHandleTouch(threshold, touchX, touchY, actionType);
     }
 
+    // bool isWithinThreshold = false;
     //public async Task<bool> TryHandleTouch(float threshold, float touchX, float touchY, SKTouchAction actionType)
     //{
     //    var wasHandled = false;
@@ -518,32 +520,34 @@ public class SkiaGumCanvasView : global::SkiaSharp.Views.Maui.Controls.SKCanvasV
 
     #endregion
 
-    private void HandleCollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
+    private void HandleCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         switch (e.Action)
         {
             case NotifyCollectionChangedAction.Add:
-                foreach (var toAdd in e.NewItems)
+                if(e.NewItems != null)
                 {
-                    var bindableGue = toAdd as BindableGue;
+                    foreach (var toAdd in e.NewItems)
+                    {
+                        var bindableGue = (BindableGue)toAdd;
 
-                    bindableGue.AddToManagers(this);
-                    bindableGue.BindingContext = this.BindingContext;
+                        bindableGue.AddToManagers(this);
+                        bindableGue.BindingContext = this.BindingContext;
+                    }
+
                 }
-
                 break;
         }
     }
 
-    public void AddChild(BindableGue toAdd)
-    {
-        Children.Add(toAdd);
+    public void AddChild(BindableGue toAdd) => Children.Add(toAdd);
 
         //if (toAdd.ClickedAsync != null || toAdd.PushedAsync != null || toAdd.DragAsync != null)
         //{
         //    this.EnableTouchEvents = true;
         //}
-    }
+    public void RemoveChild(BindableGue toRemove) => Children.Remove(toRemove);
+
 
     protected override void OnBindingContextChanged()
     {

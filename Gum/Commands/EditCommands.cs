@@ -21,6 +21,7 @@ using Gum.Services;
 using Gum.Services.Dialogs;
 using ToolsUtilities;
 using DialogResult = System.Windows.Forms.DialogResult;
+using Gum.Plugins.InternalPlugins.VariableGrid;
 
 namespace Gum.Commands;
 
@@ -36,9 +37,12 @@ public class EditCommands : IEditCommands
     private readonly ProjectCommands _projectCommands;
     private readonly IVariableInCategoryPropagationLogic _variableInCategoryPropagationLogic;
     private readonly PluginManager _pluginManager;
-    private readonly DeleteLogic _deleteLogic;
+    private readonly IProjectManager _projectManager;
+    private readonly IDeleteLogic _deleteLogic;
+    private readonly IProjectState _projectState;
+    private readonly StandardElementsManagerGumTool _standardElementsManagerGumTool;
 
-    public EditCommands(ISelectedState selectedState, 
+    public EditCommands(ISelectedState selectedState,
         INameVerifier nameVerifier,
         IRenameLogic renameLogic,
         IUndoManager undoManager,
@@ -47,8 +51,11 @@ public class EditCommands : IEditCommands
         ProjectCommands projectCommands,
         IGuiCommands guiCommands,
         IVariableInCategoryPropagationLogic variableInCategoryPropagationLogic,
-        PluginManager pluginManager, 
-        DeleteLogic deleteLogic)
+        PluginManager pluginManager,
+        IDeleteLogic deleteLogic,
+        IProjectManager projectManager,
+        IProjectState projectState,
+        StandardElementsManagerGumTool standardElementsManagerGumTool)
     {
         _selectedState = selectedState;
         _nameVerifier = nameVerifier;
@@ -60,6 +67,9 @@ public class EditCommands : IEditCommands
         _guiCommands = guiCommands;
         _variableInCategoryPropagationLogic = variableInCategoryPropagationLogic;
         _pluginManager = pluginManager;
+        _projectManager = projectManager;
+        _projectState = projectState;
+        _standardElementsManagerGumTool = standardElementsManagerGumTool;
 
         _deleteLogic = deleteLogic;
     }
@@ -144,10 +154,23 @@ public class EditCommands : IEditCommands
             string message = "Enter new state name";
             string title = "Rename state";
             GetUserStringOptions options = new(){InitialValue = _selectedState.SelectedStateSave.Name};
+
+            var category = stateContainer.Categories.FirstOrDefault(item => item.States.Contains(stateSave));
+            var changes = _renameLogic.GetChangesForRenamedState(stateSave, stateSave.Name, stateContainer, category);
+
+            var changesDetails = changes.GetChangesDetails();
+
+            if (stateContainer is BehaviorSave)
+            {
+                message += "\n\nNote: Renaming states/categories in behaviors does not update the components that use this behavior.";
+            }
+            else if (!string.IsNullOrEmpty(changesDetails))
+            {
+                message += "\n\n" + changesDetails;
+            }
+
             if (_dialogService.GetUserString(message, title, options) is { } result)
             {
-                var category = stateContainer.Categories.FirstOrDefault(item => item.States.Contains(stateSave));
-
                 using var undoLock = _undoManager.RequestLock();
                 _renameLogic.RenameState(stateSave, category, result);
             }
@@ -275,10 +298,10 @@ public class EditCommands : IEditCommands
     }
 
 
-    public void AskToRenameStateCategory(StateSaveCategory category, ElementSave elementSave)
+    public void AskToRenameStateCategory(StateSaveCategory category, IStateContainer owner)
     {
         using var undoLock = _undoManager.RequestLock();
-        _renameLogic.AskToRenameStateCategory(category, elementSave);
+        _renameLogic.AskToRenameStateCategory(category, owner);
     }
 
 
@@ -340,7 +363,7 @@ public class EditCommands : IEditCommands
 
     public void AddBehavior()
     {
-        if (GumState.Self.ProjectState.NeedsToSaveProject)
+        if (_projectState.NeedsToSaveProject)
         {
             _dialogService.ShowMessage("You must first save the project before adding a new component");
             return;
@@ -358,10 +381,10 @@ public class EditCommands : IEditCommands
             var behavior = new BehaviorSave();
             behavior.Name = name;
 
-            ProjectManager.Self.GumProjectSave.BehaviorReferences.Add(new BehaviorReference { Name = name });
-            ProjectManager.Self.GumProjectSave.BehaviorReferences.Sort((first, second) => first.Name.CompareTo(second.Name));
-            ProjectManager.Self.GumProjectSave.Behaviors.Add(behavior);
-            ProjectManager.Self.GumProjectSave.Behaviors.Sort((first, second) => first.Name.CompareTo(second.Name));
+            _projectManager.GumProjectSave.BehaviorReferences.Add(new BehaviorReference { Name = name });
+            _projectManager.GumProjectSave.BehaviorReferences.Sort((first, second) => first.Name.CompareTo(second.Name));
+            _projectManager.GumProjectSave.Behaviors.Add(behavior);
+            _projectManager.GumProjectSave.Behaviors.Sort((first, second) => first.Name.CompareTo(second.Name));
 
             _pluginManager.BehaviorCreated(behavior);
 
@@ -409,7 +432,7 @@ public class EditCommands : IEditCommands
                 var newScreen = elementAsScreen.Clone();
                 newScreen.Name = name;
                 newScreen.Initialize(null);
-                StandardElementsManagerGumTool.Self.FixCustomTypeConverters(newScreen);
+                _standardElementsManagerGumTool.FixCustomTypeConverters(newScreen);
 
                 _projectCommands.AddScreen(newScreen);
 
@@ -448,7 +471,7 @@ public class EditCommands : IEditCommands
                 }
                 newComponent.Name = folder + name;
                 newComponent.Initialize(null);
-                StandardElementsManagerGumTool.Self.FixCustomTypeConverters(newComponent);
+                _standardElementsManagerGumTool.FixCustomTypeConverters(newComponent);
 
                 _projectCommands.AddComponent(newComponent);
 
@@ -532,7 +555,7 @@ public class EditCommands : IEditCommands
                         componentSave.States.Add(state.Clone());
                     }
 
-                    StandardElementsManagerGumTool.Self.FixCustomTypeConverters(componentSave);
+                    _standardElementsManagerGumTool.FixCustomTypeConverters(componentSave);
                     _projectCommands.AddComponent(componentSave);
 
                 }

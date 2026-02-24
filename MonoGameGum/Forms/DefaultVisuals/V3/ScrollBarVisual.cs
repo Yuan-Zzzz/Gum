@@ -83,6 +83,8 @@ public class ScrollBarVisual : InteractiveGue
 
     public ScrollBarVisual(bool fullInstantiation = true, bool tryCreateFormsObject = true) : base(new InvisibleRenderable()) 
     {
+        this.HasEvents = true;
+
         // These values change depending on vertical or horizontal Orientation category state
         Width = 24;
         WidthUnits = DimensionUnitType.Absolute; 
@@ -162,6 +164,7 @@ public class ScrollBarVisual : InteractiveGue
         ThumbContainer.XUnits = GeneralUnitType.PixelsFromMiddle;
         ThumbContainer.YOrigin = VerticalAlignment.Center;
         ThumbContainer.YUnits = GeneralUnitType.PixelsFromMiddle;
+        ThumbContainer.HasEvents = true;
         this.AddChild(ThumbContainer);
 
         TrackInstance = new NineSliceRuntime();
@@ -178,6 +181,7 @@ public class ScrollBarVisual : InteractiveGue
         TrackInstance.YUnits = GeneralUnitType.PixelsFromMiddle;
         TrackInstance.ApplyState(Styling.ActiveStyle.NineSlice.Solid);
         TrackInstance.Texture = uiSpriteSheetTexture;
+        TrackInstance.HasEvents = false;
         ThumbContainer.AddChild(TrackInstance);
 
         ThumbInstance = new ButtonVisual();
@@ -290,5 +294,5 @@ public class ScrollBarVisual : InteractiveGue
         }
     }
 
-    public ScrollBar FormsControl => this.FormsControlAsObject as ScrollBar;
+    public ScrollBar FormsControl => (ScrollBar)this.FormsControlAsObject;
 }

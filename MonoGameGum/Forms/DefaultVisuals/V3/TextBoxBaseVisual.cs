@@ -147,6 +147,7 @@ public abstract class TextBoxBaseVisual : InteractiveGue
 
     public TextBoxBaseVisual(bool fullInstantiation = true, bool tryCreateFormsObject = true) : base(new InvisibleRenderable())
     {
+        this.HasEvents = true;
         States = new TextBoxCategoryStates();
         Width = 256;
         Height = 24;
@@ -173,6 +174,7 @@ public abstract class TextBoxBaseVisual : InteractiveGue
         ClipContainer.Name = "ClipContiner";
         ClipContainer.Dock(Gum.Wireframe.Dock.Fill);
         ClipContainer.ClipsChildren = true;
+        ClipContainer.HasEvents = false;
         this.AddChild(ClipContainer);
 
         SelectionInstance = new NineSliceRuntime();
@@ -215,8 +217,13 @@ public abstract class TextBoxBaseVisual : InteractiveGue
         PlaceholderTextInstance.YUnits = GeneralUnitType.PixelsFromMiddle;
         PlaceholderTextInstance.XOrigin = HorizontalAlignment.Left;
         PlaceholderTextInstance.YOrigin = VerticalAlignment.Center;
-        PlaceholderTextInstance.Width = -8f;
-        PlaceholderTextInstance.WidthUnits = DimensionUnitType.RelativeToParent;
+        // Update January 6, 2026
+        // By default placeholder text
+        // should extend off the edge unless
+        // in multi-line mode
+        //PlaceholderTextInstance.Width = -8f;
+        //PlaceholderTextInstance.WidthUnits = DimensionUnitType.RelativeToParent;
+        PlaceholderTextInstance.WidthUnits = DimensionUnitType.RelativeToChildren;
         PlaceholderTextInstance.Height = -4f;
         PlaceholderTextInstance.HeightUnits = DimensionUnitType.RelativeToParent;
         PlaceholderTextInstance.Text = "Text Placeholder";
@@ -320,6 +327,8 @@ public abstract class TextBoxBaseVisual : InteractiveGue
         AddVariable(States.SingleLineMode, "TextInstance.Width", 0f);
         AddVariable(States.SingleLineMode, "TextInstance.WidthUnits", DimensionUnitType.RelativeToChildren);
         AddVariable(States.SingleLineMode, "PlaceholderTextInstance.VerticalAlignment", VerticalAlignment.Center);
+        AddVariable(States.SingleLineMode, "PlaceholderTextInstance.WidthUnits", DimensionUnitType.RelativeToChildren);
+
         AddVariable(States.SingleLineMode, "TextInstance.VerticalAlignment", VerticalAlignment.Center);
 
         LineModeCategory.States.Add(States.MultiLineMode);
@@ -328,6 +337,7 @@ public abstract class TextBoxBaseVisual : InteractiveGue
         AddVariable(States.MultiLineMode, "TextInstance.Width", -8f);
         AddVariable(States.MultiLineMode, "TextInstance.WidthUnits", DimensionUnitType.RelativeToParent);
         AddVariable(States.MultiLineMode, "PlaceholderTextInstance.VerticalAlignment", VerticalAlignment.Top);
+        AddVariable(States.MultiLineMode, "PlaceholderTextInstance.WidthUnits", DimensionUnitType.RelativeToParent);
         AddVariable(States.MultiLineMode, "TextInstance.VerticalAlignment", VerticalAlignment.Top);
 
         LineModeCategory.States.Add(States.MultiLineModeNoWrap);
@@ -336,6 +346,7 @@ public abstract class TextBoxBaseVisual : InteractiveGue
         AddVariable(States.MultiLineModeNoWrap, "TextInstance.Width", 0f);
         AddVariable(States.MultiLineModeNoWrap, "TextInstance.WidthUnits", DimensionUnitType.RelativeToChildren);
         AddVariable(States.MultiLineModeNoWrap, "PlaceholderTextInstance.VerticalAlignment", VerticalAlignment.Top);
+        AddVariable(States.MultiLineModeNoWrap, "PlaceholderTextInstance.WidthUnits", DimensionUnitType.RelativeToChildren);
         AddVariable(States.MultiLineModeNoWrap, "TextInstance.VerticalAlignment", VerticalAlignment.Top);
     }
 

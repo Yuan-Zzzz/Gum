@@ -1,7 +1,8 @@
-﻿using Gum.Wireframe;
+﻿using Gum.DataTypes;
+using Gum.Wireframe;
 using Microsoft.Xna.Framework.Graphics;
 using MonoGameGum.GueDeriving;
-using MonoGameGum.Localization;
+using Gum.Localization;
 using Moq;
 using RenderingLibrary.Graphics;
 using Shouldly;
@@ -70,107 +71,13 @@ $"chars count=223\r\n";
 
     #endregion
 
-    #region WrappedText
-
+    #region Clone
     [Fact]
-    public void WrappedText_ShouldWrap_WithFixedWidth()
+    public void Clone_ShouldCreateClonedText()
     {
-        Text.IsMidWordLineBreakEnabled = false;
-
-        TextRuntime textRuntime = new ();
-        textRuntime.WidthUnits = Gum.DataTypes.DimensionUnitType.Absolute;
-        textRuntime.Width = 100; // Set a fixed width
-
-        textRuntime.Text = "This is a long text that should wrap within the fixed width of 100 units.";
-
-        textRuntime.WrappedText.Count.ShouldBeGreaterThan(1);
-
-        textRuntime.WrappedText[0].ShouldStartWith("This is a");
-        textRuntime.WrappedText[1].ShouldNotStartWith("This is a");
-    }
-
-    [Fact]
-    public void WrappedText_ShouldNotBreakWords_IfBreakWordsWithNoWhitespaceIsFalse()
-    {
-        Text.IsMidWordLineBreakEnabled = false;
-        TextRuntime textRuntime = new();
-        textRuntime.WidthUnits = Gum.DataTypes.DimensionUnitType.Absolute;
-        textRuntime.Width = 100; // Set a fixed width
-        textRuntime.Text = "abcdefghijklmnopqrstuvwxyz 1abcdefghijklmnopqrstuvwxyz 12abcdefghijklmnopqrstuvwxyz";
-        
-        textRuntime.WrappedText.Count.ShouldBe(3);
-        textRuntime.WrappedText[0].ShouldBe("abcdefghijklmnopqrstuvwxyz ");
-        textRuntime.WrappedText[1].ShouldBe("1abcdefghijklmnopqrstuvwxyz ");
-        textRuntime.WrappedText[2].ShouldBe("12abcdefghijklmnopqrstuvwxyz");
-    }
-
-    [Fact]
-    public void WrappedText_ShouldWrap_IfOnlyLettersExist()
-    {
-        Text text = new();
-        Text.IsMidWordLineBreakEnabled = true;
-        text.Width = 100;
-
-        text.RawText = "abcdefghijklmnopqrstuvwxyz";
-
-        text.WrappedText.Count.ShouldBeGreaterThan(1);
-        text.WrappedText[0].ShouldStartWith("abc");
-        text.WrappedText[1].ShouldNotStartWith("abc");
-        text.WrappedText[1].ShouldStartWith("mno");
-        char lastLine0 = text.WrappedText[0].Last();
-        char firstCharacterInSecondLine = text.WrappedText[1][0];
-        firstCharacterInSecondLine.ShouldBe((char)(lastLine0 + 1));
-    }
-
-    [Fact]
-    public void WrappedText_ShouldWrapMidWord_WithMultipleLines()
-    {
-        // bypassing TextRuntime to test this directly:
-        var text = new Text();
-        text.Width = 14;
-        Text.IsMidWordLineBreakEnabled = true;
-
-        text.RawText = "01\n01";
-
-        text.WrappedText.Count.ShouldBe(4);
-        text.WrappedText[0].ShouldBe("0");
-        text.WrappedText[1].ShouldBe("1\n");
-        text.WrappedText[2].ShouldBe("0");
-        text.WrappedText[3].ShouldBe("1");
-    }
-
-    [Fact]
-    public void WrappedText_ShouldWrapMidWord_WithMultipleWords()
-    {
-        // bypassing TextRuntime to test this directly:
-        var text = new Text();
-        text.Width = 14;
-        Text.IsMidWordLineBreakEnabled = true;
-
-        text.RawText = "01 01";
-
-        text.WrappedText.Count.ShouldBe(4);
-        text.WrappedText[0].ShouldBe("0");
-        text.WrappedText[1].ShouldBe("1 ");
-        text.WrappedText[2].ShouldBe("0");
-        text.WrappedText[3].ShouldBe("1");
-    }
-
-    [Fact]
-    public void WrappedText_ShouldWrapMidWord_IfWidthMatchesLetterWidthExactly()
-    {
-        // each letter is 10 wide, so let's set a width that is a multiple of that:
-        Text text = new();
-        Text.IsMidWordLineBreakEnabled = true;
-        text.Width = 30;
-
-        text.RawText = "abcdefghijklmnopqrstuvwxyz";
-
-        text.WrappedText.Count.ShouldBe(9);
-        text.WrappedText[0].ShouldNotBeEmpty("abc");
-        text.WrappedText[1].ShouldNotBeEmpty("def");
-        text.WrappedText[2].ShouldNotBeEmpty("ghi");
-        text.WrappedText[3].ShouldNotBeEmpty("jkl");
+        Text sut = new();
+        var clone = sut.Clone();
+        clone.ShouldNotBeNull();
     }
 
     #endregion
@@ -330,6 +237,86 @@ $"chars count=223\r\n";
 
     #endregion
 
+    #region HasEvents
+
+    [Fact]
+    public void HasEvents_ShouldDefaultToFalse()
+    {
+        TextRuntime sut = new();
+        sut.HasEvents.ShouldBeFalse();
+    }
+
+    #endregion
+
+    #region IsBold
+
+    [Fact]
+    public void IsBold_ShouldChangeFont_OnFontPropertiesSet()
+    {
+        // file name is:
+        // FontCache\Font18SomeFont_Italic_Bold.fnt
+        var italicBoldFont = new BitmapFont((Texture2D)null!, fontPattern);
+        var loaderManager = global::RenderingLibrary.Content.LoaderManager.Self;
+        string fileName = FileManager.Standardize("FontCache\\Font18SomeFont_Italic_Bold.fnt", preserveCase: true, makeAbsolute: true);
+        loaderManager.AddDisposable(fileName, italicBoldFont);
+
+        TextRuntime sut = new();
+        sut.UseCustomFont = true;
+        // set up all the properties:
+        sut.FontSize = 18;
+        sut.Font = "SomeFont";
+        sut.IsItalic = true;
+
+        sut.UseCustomFont = false;
+
+        sut.IsBold = true;
+
+        sut.BitmapFont.ShouldBe(italicBoldFont);
+    }
+
+    #endregion
+
+    #region MaxWidth
+
+    [Fact]
+    public void MaxWidth_ShouldWrapText_IfTextExceedsMaxWidth()
+    {
+        TextRuntime textRuntime = new();
+        textRuntime.Width = 0;
+        textRuntime.WidthUnits = Gum.DataTypes.DimensionUnitType.RelativeToChildren;
+        textRuntime.MaxWidth = 50; // Set a max width
+        textRuntime.Text = "a a a a a a a a a a a a a a a a a";
+
+        textRuntime.GetAbsoluteWidth().ShouldBeLessThanOrEqualTo(50);
+        var innerText = (Text)textRuntime.RenderableComponent;
+        innerText.WrappedText.Count.ShouldBeGreaterThan(1);
+        var lineCount = innerText.WrappedText.Count;
+
+        var absoluteHeight = textRuntime.GetAbsoluteHeight();
+        absoluteHeight.ShouldBe(lineCount * textRuntime.BitmapFont.LineHeightInPixels);
+    }
+
+    #endregion
+
+    #region PropertyChanged
+
+    [Fact]
+    public void PropertyChanged_ShouldRaise_WhenTextChanges()
+    {
+        bool wasChanged = false;
+        TextRuntime textRuntime = new();
+        textRuntime.PropertyChanged += (_, _) =>
+        {
+            wasChanged = true;
+        };
+
+        textRuntime.Text = "Hello 1234";
+
+        wasChanged.ShouldBeTrue();
+    }
+
+    #endregion
+
     #region Text (including bbcode and localization)
 
     [Fact]
@@ -438,81 +425,183 @@ $"chars count=223\r\n";
 
     #endregion
 
-    #region MaxWidth
+    #region WrappedText
 
     [Fact]
-    public void MaxWidth_ShouldWrapText_IfTextExceedsMaxWidth()
+    public void WrappedText_ShouldWrap_WithFixedWidth()
     {
+        Text.IsMidWordLineBreakEnabled = false;
+
+        TextRuntime textRuntime = new ();
+        textRuntime.WidthUnits = Gum.DataTypes.DimensionUnitType.Absolute;
+        textRuntime.Width = 100; // Set a fixed width
+
+        textRuntime.Text = "This is a long text that should wrap within the fixed width of 100 units.";
+
+        textRuntime.WrappedText.Count.ShouldBeGreaterThan(1);
+
+        textRuntime.WrappedText[0].ShouldStartWith("This is a");
+        textRuntime.WrappedText[1].ShouldNotStartWith("This is a");
+    }
+
+    [Fact]
+    public void WrappedText_ShouldNotBreakWords_IfBreakWordsWithNoWhitespaceIsFalse()
+    {
+        Text.IsMidWordLineBreakEnabled = false;
         TextRuntime textRuntime = new();
-        textRuntime.Width = 0;
-        textRuntime.WidthUnits = Gum.DataTypes.DimensionUnitType.RelativeToChildren;
-        textRuntime.MaxWidth = 50; // Set a max width
-        textRuntime.Text = "a a a a a a a a a a a a a a a a a";
+        textRuntime.WidthUnits = Gum.DataTypes.DimensionUnitType.Absolute;
+        textRuntime.Width = 100; // Set a fixed width
+        textRuntime.Text = "abcdefghijklmnopqrstuvwxyz 1abcdefghijklmnopqrstuvwxyz 12abcdefghijklmnopqrstuvwxyz";
+        
+        textRuntime.WrappedText.Count.ShouldBe(3);
+        textRuntime.WrappedText[0].ShouldBe("abcdefghijklmnopqrstuvwxyz ");
+        textRuntime.WrappedText[1].ShouldBe("1abcdefghijklmnopqrstuvwxyz ");
+        textRuntime.WrappedText[2].ShouldBe("12abcdefghijklmnopqrstuvwxyz");
+    }
 
-        textRuntime.GetAbsoluteWidth().ShouldBeLessThanOrEqualTo(50);
-        var innerText = (Text)textRuntime.RenderableComponent;
-        innerText.WrappedText.Count.ShouldBeGreaterThan(1);
-        var lineCount = innerText.WrappedText.Count;
+    [Fact]
+    public void WrappedText_ShouldWrap_IfOnlyLettersExist()
+    {
+        Text text = new();
+        Text.IsMidWordLineBreakEnabled = true;
+        text.Width = 100;
 
-        var absoluteHeight = textRuntime.GetAbsoluteHeight();
-        absoluteHeight.ShouldBe(lineCount * textRuntime.BitmapFont.LineHeightInPixels);
+        text.RawText = "abcdefghijklmnopqrstuvwxyz";
+
+        text.WrappedText.Count.ShouldBeGreaterThan(1);
+        text.WrappedText[0].ShouldStartWith("abc");
+        text.WrappedText[1].ShouldNotStartWith("abc");
+        text.WrappedText[1].ShouldStartWith("mno");
+        char lastLine0 = text.WrappedText[0].Last();
+        char firstCharacterInSecondLine = text.WrappedText[1][0];
+        firstCharacterInSecondLine.ShouldBe((char)(lastLine0 + 1));
+    }
+
+    [Fact]
+    public void WrappedText_ShouldWrapMidWord_WithMultipleLines()
+    {
+        // bypassing TextRuntime to test this directly:
+        var text = new Text();
+        text.Width = 14;
+        Text.IsMidWordLineBreakEnabled = true;
+
+        text.RawText = "01\n01";
+
+        text.WrappedText.Count.ShouldBe(4);
+        text.WrappedText[0].ShouldBe("0");
+        text.WrappedText[1].ShouldBe("1\n");
+        text.WrappedText[2].ShouldBe("0");
+        text.WrappedText[3].ShouldBe("1");
+    }
+
+    [Fact]
+    public void WrappedText_ShouldWrapMidWord_WithMultipleWords()
+    {
+        // bypassing TextRuntime to test this directly:
+        var text = new Text();
+        text.Width = 14;
+        Text.IsMidWordLineBreakEnabled = true;
+
+        text.RawText = "01 01";
+
+        text.WrappedText.Count.ShouldBe(4);
+        text.WrappedText[0].ShouldBe("0");
+        text.WrappedText[1].ShouldBe("1 ");
+        text.WrappedText[2].ShouldBe("0");
+        text.WrappedText[3].ShouldBe("1");
+    }
+
+    [Fact]
+    public void WrappedText_ShouldWrapMidWord_IfWidthMatchesLetterWidthExactly()
+    {
+        // each letter is 10 wide, so let's set a width that is a multiple of that:
+        Text text = new();
+        Text.IsMidWordLineBreakEnabled = true;
+        text.Width = 30;
+
+        text.RawText = "abcdefghijklmnopqrstuvwxyz";
+
+        text.WrappedText.Count.ShouldBe(9);
+        text.WrappedText[0].ShouldNotBeEmpty("abc");
+        text.WrappedText[1].ShouldNotBeEmpty("def");
+        text.WrappedText[2].ShouldNotBeEmpty("ghi");
+        text.WrappedText[3].ShouldNotBeEmpty("jkl");
+    }
+
+    [Fact]
+    public void WrappedText_ShouldPreferZeroWidthSpace_WhenBreakingMidWord()
+    {
+        // bypassing TextRuntime to test this directly:
+        var text = new Text();
+        text.Width = 86; 
+        Text.IsMidWordLineBreakEnabled = true;
+
+        // Create a long word with zero-width space at a preferred break point
+        // "abcde\u200Bfghijklmno" - the zero-width space is after 'e'
+        text.RawText = "abcde\u200Bfghijklmno";
+
+        // Should break at the zero-width space position
+        text.WrappedText.Count.ShouldBe(2);
+        text.WrappedText[0].ShouldBe("abcde");
+        text.WrappedText[1].ShouldBe("fghijklmno");
+    }
+
+    [Fact]
+    public void WrappedText_ShouldRemoveZeroWidthSpace_WhenBreakingAtIt()
+    {
+        var text = new Text();
+        text.Width = 50;
+        Text.IsMidWordLineBreakEnabled = true;
+
+        text.RawText = "abc\u200Bdef";
+
+        // The zero-width space should be removed from output
+        text.WrappedText.Count.ShouldBe(2);
+        text.WrappedText[0].ShouldBe("abc");
+        text.WrappedText[1].ShouldBe("def");
+
+        // Neither line should contain the zero-width space character
+        text.WrappedText[0].ShouldNotContain("\u200B");
+        text.WrappedText[1].ShouldNotContain("\u200B");
+    }
+
+    [Fact]
+    public void WrappedText_ShouldIgnoreZeroWidthSpace_IfItExceedsWrappingWidth()
+    {
+        var text = new Text();
+        text.Width = 40; // Only fits about 4 characters
+        Text.IsMidWordLineBreakEnabled = true;
+
+        // Zero-width space is at position 7, but line can only fit 4 chars
+        // Should break at regular position instead
+        text.RawText = "abcdefg\u200Bhijklmnop";
+
+        text.WrappedText.Count.ShouldBeGreaterThan(2);
+        // First line should be less than the zero-width space position
+        text.WrappedText[0].Length.ShouldBeLessThan(7);
+    }
+
+    [Fact]
+    public void WrappedText_ShouldHandleMultipleZeroWidthSpaces_InSameWord()
+    {
+        var text = new Text();
+        text.Width = 55; // Enough for about 5 characters
+        Text.IsMidWordLineBreakEnabled = true;
+
+        // Multiple zero-width spaces: "abc\u200Bdef\u200Bghi"
+        // Should prefer the last one before exceeding width
+        text.RawText = "abc\u200Bdef\u200Bghijklmno";
+
+        text.WrappedText.Count.ShouldBe(4);
+        // Should break at second zero-width space (after "def")
+        text.WrappedText[0].ShouldBe("abc");
+        text.WrappedText[1].ShouldBe("def");
     }
 
     #endregion
 
-    #region Clone
-    [Fact]
-    public void Clone_ShouldCreateClonedText()
-    {
-        Text sut = new();
-        var clone = sut.Clone();
-        clone.ShouldNotBeNull();
-    }
+    #region UseCustomnFont
 
-    #endregion
-
-    #region PropertyChanged
-
-    [Fact]
-    public void PropertyChanged_ShouldRaise_WhenTextChanges()
-    {
-        bool wasChanged = false;
-        TextRuntime textRuntime = new();
-        textRuntime.PropertyChanged += (_, _) =>
-        {
-            wasChanged = true;
-        };
-
-        textRuntime.Text = "Hello 1234";
-
-        wasChanged.ShouldBeTrue();
-    }
-
-    #endregion
-
-    [Fact]
-    public void IsBold_ShouldChangeFont_OnFontPropertiesSet()
-    {
-        // file name is:
-        // FontCache\Font18SomeFont_Italic_Bold.fnt
-        var italicBoldFont = new BitmapFont((Texture2D)null!, fontPattern);
-        var loaderManager = global::RenderingLibrary.Content.LoaderManager.Self;
-        string fileName = FileManager.Standardize("FontCache\\Font18SomeFont_Italic_Bold.fnt", preserveCase: true, makeAbsolute: true);
-        loaderManager.AddDisposable(fileName, italicBoldFont);
-
-        TextRuntime sut = new();
-        sut.UseCustomFont = true;
-        // set up all the properties:
-        sut.FontSize = 18;
-        sut.Font = "SomeFont";
-        sut.IsItalic = true;
-
-        sut.UseCustomFont = false;
-
-        sut.IsBold = true;
-
-        sut.BitmapFont.ShouldBe(italicBoldFont);
-    }
 
     [Fact]
     public void UseCustomFont_ShouldChangeFont_OnFontPropertiesSet()
@@ -537,6 +626,8 @@ $"chars count=223\r\n";
         sut.BitmapFont.ShouldBe(italicBoldFont);
     }
 
+    #endregion
+
     [Fact]
     public void MaxNumberOfLetters_ShouldNotChangeDimensions()
     {
@@ -554,4 +645,38 @@ $"chars count=223\r\n";
 
 
     }
+
+    [Fact]
+    public void Anchor_CenterHorizontally_ShouldSetCorrectValues()
+    {
+        TextRuntime textRuntime = new TextRuntime();
+        textRuntime.HorizontalAlignment = HorizontalAlignment.Right;
+        textRuntime.VerticalAlignment = VerticalAlignment.Bottom;
+        textRuntime.Text = "This is some sample text";
+        textRuntime.Anchor(Anchor.CenterHorizontally);
+
+        // Should set center
+        textRuntime.HorizontalAlignment.ShouldBe(HorizontalAlignment.Center);
+
+        // Should not change vertical
+        textRuntime.VerticalAlignment.ShouldBe(VerticalAlignment.Bottom);
+    }
+
+    [Fact]
+    public void Anchor_CenterVertically_ShouldSetCorrectValues()
+    {
+        TextRuntime textRuntime = new TextRuntime();
+        textRuntime.HorizontalAlignment = HorizontalAlignment.Right;
+        textRuntime.VerticalAlignment = VerticalAlignment.Bottom;
+        textRuntime.Text = "This is some sample text";
+        textRuntime.Anchor(Anchor.CenterVertically);
+
+        // Should not change Horizontal
+        textRuntime.HorizontalAlignment.ShouldBe(HorizontalAlignment.Right);
+
+        // Should set Center
+        textRuntime.VerticalAlignment.ShouldBe(VerticalAlignment.Center);
+    }
+
+
 }

@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
+using System.Windows.Threading;
 
 namespace Gum.Plugins.Undos
 {
@@ -16,7 +17,7 @@ namespace Gum.Plugins.Undos
             InitializeComponent();
         }
 
-        private void ListBox_PreviewMouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        private void ListBox_PreviewMouseDown(object? sender, System.Windows.Input.MouseButtonEventArgs e)
         {
             // Check if the click is on a scrollbar
             var hitTestResult = VisualTreeHelper.HitTest(ListBoxInstance, e.GetPosition(ListBoxInstance));
@@ -47,18 +48,14 @@ namespace Gum.Plugins.Undos
             return false;
         }
 
-        private void HandleSelectionChanged(object sender, SelectionChangedEventArgs e)
+        private void HandleSelectionChanged(object? sender, SelectionChangedEventArgs e)
         {
             // This brings the selection into view:
             var listBox = sender as ListBox;
             if (listBox != null && listBox.SelectedItem != null)
             {
-                listBox.Dispatcher.BeginInvoke(
-                    (Action)(() =>
-                    {
-                        listBox.UpdateLayout();
-                        listBox.ScrollIntoView(listBox.SelectedItem);
-                    }));
+                listBox.Dispatcher.BeginInvoke(DispatcherPriority.Loaded,
+                    (Action)(() =>listBox.ScrollIntoView(listBox.SelectedItem)));
             }
         }
     }

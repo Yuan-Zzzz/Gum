@@ -6,8 +6,25 @@
 
 set -e
 
-GUM_WINE_PREFIX_PATH="${1:-$HOME/.wine_gum_dotnet8/}"
-INSTALL_LOG_FILE="/tmp/gum_install.log"
+SCRIPT_VERSION="2026.02.16"
+
+################################################################################
+### Check for a graphical display (Wine requires one)
+################################################################################
+if [ -z "$DISPLAY" ] && [ -z "$WAYLAND_DISPLAY" ]; then
+    echo "ERROR: No graphical display detected (DISPLAY and WAYLAND_DISPLAY are not set)."
+    echo "Wine requires a graphical session. Please run this script from a desktop terminal,"
+    echo "not from SSH, WinSCP, or a TTY console."
+    exit 1
+fi
+
+if [ -z "$1" ]; then
+    GUM_WINE_PREFIX_PATH="$HOME/.wine_gum_dotnet8"
+else
+    GUM_WINE_PREFIX_PATH="$1"
+fi
+
+INSTALL_LOG_FILE="/tmp/gum_install_$(date +%Y%m%d_%H%M%S).log"
 
 write_log_section_header() {
     echo "#############################################" >> "$INSTALL_LOG_FILE" 2>&1
@@ -26,11 +43,11 @@ run_winetricks() {
     run_and_write_log WINEPREFIX="$GUM_WINE_PREFIX_PATH" winetricks "$@"
 }
 
-echo "" > $INSTALL_LOG_FILE # clear the log file
+
+echo "" > "$INSTALL_LOG_FILE" # clear the log file
 write_log_section_header "Starting installation process..."
 
-echo "This is an experimental script."
-echo "Script last updated on the 23rd of November 2025!"
+echo "This is an experimental script. (v$SCRIPT_VERSION)"
 echo "This will set up a new Wine prefix for gum in $GUM_WINE_PREFIX_PATH"
 echo "Install logs will be written to $INSTALL_LOG_FILE"
 
@@ -54,8 +71,8 @@ else
     echo "Wine version [${WINE_VERSION}] found!"
 fi
 
-DISTRO=$(( lsb_release -si 2>/dev/null || grep '^ID=' /etc/os-release 2>/dev/null || echo "${OSTYPE//[0-9\.]/}" 2>/dev/null || name ) | cut -d= -f2 | tr -d '"' | tr '[:upper:]'  '[:lower:]')
-VERSION=$(( lsb_release -sr 2>/dev/null || grep '^VERSION_ID=' /etc/os-release 2>/dev/null || echo "${OSTYPE//[A-Za-z]/}" 2>/dev/null | cut -d '.' -f1 || sw_vers --productVersion ) | cut -d= -f2 | tr -d '"' | cut -c1-2 )
+DISTRO=$( (lsb_release -si 2>/dev/null || grep '^ID=' /etc/os-release 2>/dev/null || echo "${OSTYPE//[0-9\.]/}" 2>/dev/null || name) | cut -d= -f2 | tr -d '"' | tr '[:upper:]' '[:lower:]')
+VERSION=$( (lsb_release -sr 2>/dev/null || grep '^VERSION_ID=' /etc/os-release 2>/dev/null || echo "${OSTYPE//[A-Za-z]/}" 2>/dev/null | cut -d '.' -f1 || sw_vers --productVersion) | cut -d= -f2 | tr -d '"' | cut -c1-2 )
 
 # Install or update wine
 if [[ "${INSTALL_OR_UPGRADE_NEEDED}" == "Y" ]]; then
@@ -113,41 +130,10 @@ if [[ "${INSTALL_OR_UPGRADE_NEEDED}" == "Y" ]]; then
             sudo dnf install -y wine
             ;;
 
-        darwin)
-            echo -e "\nDetected macOS Version ${VERSION}"
-
-            echo -e "\nVerifying that BREW is installed..."
-            BREW_VERSION=$(brew --version 2>/dev/null | grep -Eo '[0-9]+' | head -n1)
-            BREW_INSTALL_REQUIRED="N"
-            if [[ ! "${BREW_VERSION}" ]]; then
-                echo "Brew is not installed!"
-                BREW_INSTALL_REQUIRED="Y"
-            else
-                echo "Brew version [${BREW_VERSION}] found!"
-            fi
-
-            if [[ "${BREW_INSTALL_REQUIRED}" == "Y" ]]; then
-                read -p "Do you wish to install brew (home brew)? (Y/n): " choice
-                case "$choice" in
-                    ""|y|Y ) echo "INFO: Installing brew";;
-                    n|N ) echo "WARN: Unable to continue, GUM requires Wine on Mac which is installed with brew!"; exit 0;;
-                    * ) echo "ERROR: Invalid option. Exiting."; exit 1;;
-                esac
-
-                echo -e "\nAttempting to install brew..."
-
-                /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-            fi
-
-
-            echo -e "\nAttempting to install Wine-stable"
-            brew install --cask --no-quarantine wine-stable
-            ;;
-
         *)
             echo "ERROR: Unsupported or unknown distribution: $DISTRO"
-  			echo "ERROR: Please install wine manually!"
-			echo "ERROR: https://duckduckgo.com/?t=h_&q=Insert+Your+Linux+Distro+Here+How+To+Install+Wine"
+            echo "ERROR: Please install wine manually!"
+            echo "ERROR: https://duckduckgo.com/?t=h_&q=Insert+Your+Linux+Distro+Here+How+To+Install+Wine"
             exit 1
             ;;
     esac
@@ -165,9 +151,6 @@ if ! winetricks --version &> /dev/null; then
             ;;
         fedora|nobara)
             sudo dnf install -y winetricks
-            ;;
-        darwin)
-            brew install winetricks
             ;;
         *)
             echo "ERROR: Unsupported distribution [${DISTRO}] for automated winetricks install."
@@ -196,9 +179,6 @@ if [[ ! "${WINETRICKS_YEAR}" || "${WINETRICKS_YEAR}" -le 2024 ]]; then
         fedora|nobara)
             sudo winetricks --self-update
             ;;
-        darwin)
-            brew winetricks --self-update
-            ;;
         *)
             echo "Unsupported distribution [${DISTRO}] for automated winetricks update."
             exit 1
@@ -215,7 +195,7 @@ fi
 if [ -d "$GUM_WINE_PREFIX_PATH" ]; then
     echo "Error: The gum wine prefix directory '$GUM_WINE_PREFIX_PATH' already exists."
     echo "This script can only be used on the initial creation of the gum wine prefix."
-    echo "Call '~/bin/gum.sh upgrade' if upgrading the gum version, or call this script with a different directory to setup gum in (e.g. './setup_gum_linux.sh ~/home/.other_gum_wine_prefix')"
+    echo "Call '~/bin/gum upgrade' if upgrading the gum version, or call this script with a different directory to setup gum in (e.g. './setup_gum_linux.sh ~/.other_gum_wine_prefix')"
     exit 1
 fi
 
@@ -245,10 +225,8 @@ echo " - Fonts installed"
 ### to appear.  They can take a few minutes to finish, please be patient
 ################################################################################
 
-echo "Installing .NET 8 using winetricks"
-echo " - Two installer dialogs will appear, follow the steps for both to install"
-echo " - They may take a few minutes to install, please be patient"
-run_winetricks dotnetdesktop8
+echo "Installing .NET 8 using winetricks (this may take a few minutes)..."
+run_winetricks -q dotnetdesktop8
 
 ################################################################################
 ### Download the gum.zip file from the FRB site into the Program Files directory
@@ -280,10 +258,36 @@ rm -f "$GUM_ZIP_FILE" \
 
 
 ################################################################################
+### Install 32-bit Vulkan loader (required for DXVK in Wine)
+################################################################################
+echo -e "\nInstalling 32-bit Vulkan loader for DXVK support..."
+case "$DISTRO" in
+    ubuntu|linuxmint)
+        sudo apt install -y libvulkan1:i386 || echo "WARN: Failed to install libvulkan1:i386 - DXVK may not work"
+        ;;
+    fedora|nobara)
+        sudo dnf install -y vulkan-loader.i686 || echo "WARN: Failed to install vulkan-loader.i686 - DXVK may not work"
+        ;;
+    *)
+        echo "WARN: Unknown distro [$DISTRO] - skipping 32-bit Vulkan loader install. DXVK may not work."
+        ;;
+esac
+
+################################################################################
+### Install DXVK (for optional Vulkan support) but default to WineD3D
+################################################################################
+echo -e "\nInstalling DXVK (for optional Vulkan support)..."
+run_winetricks dxvk
+# Default to WineD3D — user can switch with: ~/bin/gum dxvk
+echo "Reverting to WineD3D as the default renderer..."
+run_and_write_log WINEPREFIX="$GUM_WINE_PREFIX_PATH" winetricks d3d8=builtin d3d9=builtin d3d10=builtin d3d10_1=builtin d3d10core=builtin d3d11=builtin dxgi=builtin
+echo " - DXVK installed. WineD3D is the default. To switch: ~/bin/gum dxvk"
+
+################################################################################
 ### Define the script variables
 ################################################################################
 echo "Creating gum script and adding to path"
-GUM_EXE_PATH=$(find "$GUM_WINE_EXTRACT_DIR" -name "Gum.exe" -type f)
+GUM_EXE_PATH=$(find "$GUM_WINE_EXTRACT_DIR" -name "Gum.exe" -type f | head -n1)
 
 ################################################################################
 ### Create the ~/bin directory if it doesn't exist
@@ -302,12 +306,17 @@ cat > ~/bin/gum <<EOF
 export WINE_NO_WM_DECORATION=1
 export PROTON_NO_WM_DECORATION=1
 
+# Overwrite DOTNET environment variables that if set will break dotnet apps
+# https://learn.microsoft.com/en-us/dotnet/core/tools/dotnet-environment-variables#dotnet_root-dotnet_rootx86-dotnet_root_x86-dotnet_root_x64
+# https://github.com/vchelaru/Gum/issues/1957
+unset DOTNET_ROOT
+unset DOTNET_ROOT_X64
+
 # If no arguments were passed in, then just run gum
 if [ \$# -eq 0 ]; then
 
     # Attempt to add registry keys
     WINEPREFIX="$GUM_WINE_PREFIX_PATH" wine reg add "HKCU\\Software\\Wine\\X11 Driver" /v Decorated /t REG_SZ /d N /f
-    WINEPREFIX="$GUM_WINE_PREFIX_PATH" wine reg add "HKCU\\Software\\Wine\\Mac Driver" /v Decorated /t REG_SZ /d N /f
 
     WINEPREFIX="$GUM_WINE_PREFIX_PATH" wine "$GUM_EXE_PATH"
     exit 0
@@ -337,8 +346,32 @@ if [ "\$1" = "upgrade" ]; then
     exit 0
 fi
 
+# Print the wine prefix path
+if [ "\$1" = "prefix" ]; then
+    echo "$GUM_WINE_PREFIX_PATH"
+    exit 0
+fi
+
+# Switch to DXVK (Vulkan-based Direct3D)
+if [ "\$1" = "dxvk" ]; then
+    echo "Switching to DXVK..."
+    WINEPREFIX="$GUM_WINE_PREFIX_PATH" winetricks dxvk
+    WINEPREFIX="$GUM_WINE_PREFIX_PATH" winetricks d3d8=native d3d9=native d3d10=native d3d10_1=native d3d10core=native d3d11=native dxgi=native
+    echo "Done. To revert: ~/bin/gum d3d"
+    exit 0
+fi
+
+# Revert to WineD3D (Wine's built-in Direct3D)
+if [ "\$1" = "d3d" ]; then
+    echo "Switching to WineD3D..."
+    WINEPREFIX="$GUM_WINE_PREFIX_PATH" winetricks d3d8=builtin d3d9=builtin d3d10=builtin d3d10_1=builtin d3d10core=builtin d3d11=builtin dxgi=builtin
+    echo "Done. To switch back: ~/bin/gum dxvk"
+    exit 0
+fi
+
 # Unknown argument
 echo "Unknown argument: \$1"
+echo "Usage: gum [upgrade|dxvk|d3d|prefix]"
 exit 1
 EOF
 
@@ -349,30 +382,23 @@ chmod +x ~/bin/gum &> /dev/null
 
 ################################################################################
 ### Check if the bin directory is in PATH based on the shell being used
-### If not, add it to PATH and reload the shell configuration.
+### If not, add it to PATH for future terminal sessions.
 ################################################################################
 if [[ $SHELL == *"bash"* ]]; then
     if ! grep -q 'export PATH="$HOME/bin:$PATH"' ~/.bashrc 2>/dev/null; then
-        echo "Adding ~/bin to PATH in ~/.bashrc, please wait..."
+        echo "Adding ~/bin to PATH in ~/.bashrc..."
         echo 'export PATH="$HOME/bin:$PATH"' >> ~/.bashrc
-        echo source ~/.bashrc
     fi
-    echo "Reloading ~/.bashrc, please wait..."
-    source ~/.bash_profile &> /dev/null
 elif [[ $SHELL == *"zsh"* ]]; then
     if ! grep -q 'export PATH="$HOME/bin:$PATH"' ~/.zshrc 2>/dev/null; then
-        echo "Adding ~/bin to PATH in ~/.zshrc, please wait..."
+        echo "Adding ~/bin to PATH in ~/.zshrc..."
         echo 'export PATH="$HOME/bin:$PATH"' >> ~/.zshrc
     fi
-    echo "Reloading ~/.zshrc, please wait..."
-    source ~/.zshrc &> /dev/null
 elif [[ $SHELL == *"fish"* ]]; then
     if ! grep -q 'set -x PATH $HOME/bin $PATH' ~/.config/fish/config.fish 2>/dev/null; then
-        echo "Adding ~/bin to PATH in config.fish, please wait..."
+        echo "Adding ~/bin to PATH in config.fish..."
         echo 'set -x PATH $HOME/bin $PATH' >> ~/.config/fish/config.fish
     fi
-    echo "Reloading config.fish, please wait..."
-    source ~/.config/fish/config.fish &> /dev/null
 else
     echo "WARNING: Unable to determine shell type. Please ensure ~/bin is in your PATH manually."
 fi
@@ -380,10 +406,10 @@ fi
 ################################################################################
 ### Finished
 ################################################################################
-echo "SUCCESS: Gum setup on Linux using WINE is now complete. You can open the GUM Tool by using the command 'gum'."
-echo "TIP: To start Gum: in a terminal type ~/bin/gum"
-echo "TIP: You may need to restart the terminal or your computer if it doesn't work at first"
-echo "-------------------"
-echo "OPTIONAL: Install dxvk with the command winetricks dxvk, if you can use Vulkan on your system! (It handles better than OpenGL)."
-echo "-------------------"
+echo ""
+echo "SUCCESS: Gum setup on Linux using WINE is now complete!"
+echo ""
+echo "To start Gum, open a new terminal and type: gum"
+echo "  Or in this terminal: ~/bin/gum"
+echo ""
 echo "Enjoy using GUM!"

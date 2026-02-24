@@ -43,6 +43,7 @@ public class SplitterVisual : InteractiveGue
 
     public SplitterVisual(bool fullInstantiation = true, bool tryCreateFormsObject = true) : base(new InvisibleRenderable())
     {
+        this.HasEvents = true;
         Width = 8;
         Height = 8;
 
@@ -63,5 +64,5 @@ public class SplitterVisual : InteractiveGue
         }
     }
 
-    public Splitter FormsControl => FormsControlAsObject as Splitter;
+    public Splitter FormsControl => (Splitter)FormsControlAsObject;
 }

@@ -22,14 +22,14 @@ public class ColorPickerLogic
     private readonly IUndoManager _undoManager;
     private readonly IGuiCommands _guiCommands;
     private readonly ObjectFinder _objectFinder;
-    private readonly SetVariableLogic _setVariableLogic;
+    private readonly ISetVariableLogic _setVariableLogic;
 
     public ColorPickerLogic(ISelectedState selectedState,
         IExposeVariableService exposeVariableService,
         IUndoManager undoManager,
         IGuiCommands guiCommands,
         ObjectFinder objectFinder,
-        SetVariableLogic setVariableLogic)
+        ISetVariableLogic setVariableLogic)
     {
         _selectedState = selectedState;
         _exposeVariableService = exposeVariableService;
@@ -49,7 +49,7 @@ public class ColorPickerLogic
 
                 foreach (var variable in membersBefore)
                 {
-                    VariableSave rootVariable = null;
+                    VariableSave? rootVariable = null;
                     if (instance != null)
                     {
                         rootVariable = _objectFinder.GetRootVariable(variable.Name, instance);
@@ -69,7 +69,7 @@ public class ColorPickerLogic
         }
     }
 
-    private void AddColorVariable(ElementSave element, InstanceSave? instance, MemberCategory category, InstanceMember? variable)
+    private void AddColorVariable(ElementSave element, InstanceSave? instance, MemberCategory category, InstanceMember variable)
     {
         //var indexOfRed = variable.Name.IndexOf("Red");
         //var before = variable.Name.Substring(0, indexOfRed);
@@ -84,7 +84,7 @@ public class ColorPickerLogic
         //var blueVariable = category.Members.FirstOrDefault(item => item.Name == blueVariableName);
         var redVariable = variable;
         string colorPrefix, colorSuffix;
-        InstanceMember greenVariable, blueVariable;
+        InstanceMember? greenVariable, blueVariable;
 
         TryGetGreenBlueVariables(element, instance, category, variable, out colorPrefix, out colorSuffix, out greenVariable, out blueVariable);
 
@@ -114,8 +114,6 @@ public class ColorPickerLogic
                 }
             }
 
-
-
             InstanceMember instanceMember = new InstanceMember($"{colorPrefix}Color{colorSuffix}", null);
             instanceMember.PreferredDisplayer = typeof(Gum.Controls.DataUi.ColorDisplay);
 
@@ -130,10 +128,15 @@ public class ColorPickerLogic
 
             TryAddExposeColorVariableMenuItem(instance, instanceMember);
 
-            // so color updates
-            redVariable.PropertyChanged += (not, used) => instanceMember.SimulateValueChanged();
-            greenVariable.PropertyChanged += (not, used) => instanceMember.SimulateValueChanged();
-            blueVariable.PropertyChanged += (not, used) => instanceMember.SimulateValueChanged();
+            // so color updates (also re-evaluates IsReadOnly in case Locked changed)
+            void RefreshColorMember()
+            {
+                instanceMember.IsReadOnly = variable.IsReadOnly || greenVariable.IsReadOnly || blueVariable.IsReadOnly;
+                instanceMember.SimulateValueChanged();
+            }
+            redVariable.PropertyChanged += (_, _) => RefreshColorMember();
+            greenVariable.PropertyChanged += (_, _) => RefreshColorMember();
+            blueVariable.PropertyChanged += (_, _) => RefreshColorMember();
 
             var indexToInsertAfter = Math.Max(category.Members.IndexOf(redVariable), Math.Max(category.Members.IndexOf(greenVariable), category.Members.IndexOf(blueVariable)));
             category.Members.Insert(indexToInsertAfter + 1, instanceMember);
@@ -163,7 +166,7 @@ public class ColorPickerLogic
         {
             var shouldPushValueChanged = true;
 
-            object oldValue = variableSave?.Value;
+            object? oldValue = variableSave?.Value;
 
             if(variableSave == null)
             {
@@ -185,7 +188,7 @@ public class ColorPickerLogic
             if(shouldPushValueChanged)
             {
                 _setVariableLogic.PropertyValueChanged(
-                    variableSave.GetRootName(),
+                    variableSave!.GetRootName(),
                     oldValue,
                     _selectedState.SelectedInstance, 
                     state,
@@ -195,7 +198,7 @@ public class ColorPickerLogic
         }
     }
 
-    private void TryAddExposeColorVariableMenuItem(InstanceSave instance, InstanceMember instanceMember)
+    private void TryAddExposeColorVariableMenuItem(InstanceSave? instance, InstanceMember instanceMember)
     {
         if (instance != null)
         {
@@ -218,7 +221,7 @@ public class ColorPickerLogic
         }
     }
 
-    private void HandleExposeColorEvent(object sender, RoutedEventArgs e)
+    private void HandleExposeColorEvent(object? sender, RoutedEventArgs e)
     {
         // expose 3 variables: Red, Green, and Blue
         var instance = _selectedState.SelectedInstance;
@@ -292,7 +295,14 @@ public class ColorPickerLogic
     }
 
 
-    private void TryGetGreenBlueVariables(ElementSave element, InstanceSave? instance, MemberCategory category, InstanceMember? variable, out string beforeRed, out string afterRed, out InstanceMember greenVariable, out InstanceMember blueVariable)
+    private void TryGetGreenBlueVariables(ElementSave element, 
+        InstanceSave? instance, 
+        MemberCategory category, 
+        InstanceMember variable, 
+        out string beforeRed, 
+        out string afterRed, 
+        out InstanceMember? greenVariable, 
+        out InstanceMember? blueVariable)
     {
         List<InstanceMember> greenVariables = new List<InstanceMember>();
         List<InstanceMember> blueVariables = new List<InstanceMember>();

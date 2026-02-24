@@ -20,7 +20,7 @@ public partial class DialogWindow : WindowChromeWindow
 
     // This hacks around some artifacts that present when using custom WindowChrome
     // when you want your window to size to content and center itself
-    private void OnLoaded(object sender, RoutedEventArgs e)
+    private void OnLoaded(object? sender, RoutedEventArgs e)
     {
         var mainWindow = Application.Current.MainWindow;
         SizeToContent = SizeToContent.WidthAndHeight;
@@ -32,7 +32,7 @@ public partial class DialogWindow : WindowChromeWindow
         Loaded -= OnLoaded;
     }
 
-    private void OnPreviewKeyDown(object sender, KeyEventArgs e)
+    private void OnPreviewKeyDown(object? sender, KeyEventArgs e)
     {
         if (e.Key == Key.Escape)
         {
@@ -45,9 +45,35 @@ public partial class DialogWindow : WindowChromeWindow
                 Close();
             }
         }
+        else if (e.Key == Key.C && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+        {
+            if (DataContext is MessageDialogViewModel messageVm && !string.IsNullOrEmpty(messageVm.Message))
+            {
+                TrySetClipboardText(messageVm.Message);
+                e.Handled = true;
+            }
+        }
     }
 
-    private void ScrollViewer_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    private static void TrySetClipboardText(string text, int retries = 3)
+    {
+        for (int i = 0; i < retries; i++)
+        {
+            try
+            {
+                Clipboard.SetText(text);
+                return;
+            }
+            catch (System.Runtime.InteropServices.COMException)
+            {
+                if (i == retries - 1)
+                    throw;
+                System.Threading.Thread.Sleep(10);
+            }
+        }
+    }
+
+    private void ScrollViewer_PreviewMouseWheel(object? sender, MouseWheelEventArgs e)
     {
         DependencyObject? origin = e.OriginalSource as DependencyObject;
 

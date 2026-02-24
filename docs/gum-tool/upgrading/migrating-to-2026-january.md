@@ -4,9 +4,37 @@
 
 This page discusses breaking changes and other considerations when migrating from `2025 December` to `2026 January` .
 
+## Upgrading Gum Tool
+
+{% tabs %}
+{% tab title="Windows" %}
+To upgrade the Gum tool:
+
+1. Download Gum.zip from the release on Github: [https://github.com/vchelaru/Gum/releases/tag/PreRelease\_January\_31\_2026](https://github.com/vchelaru/Gum/releases/tag/PreRelease_January_31_2026)
+2. Delete the old tool from your machine
+3. Unzip the gum tool to the same location as to not break any file associations
+{% endtab %}
+
+{% tab title="Linux" %}
+To upgrade the Gum tool, it depends on your current version of gum.
+
+1. Your Gum version < 2026
+   1. Download the latest `setup_gum_linux.sh` script to your home directory [https://github.com/vchelaru/Gum/blob/master/setup\_gum\_linux.sh](../../../setup_gum_linux.sh)
+   2. Make it executable `chmod +x ./setup_gum_linux.sh`
+   3. Re-run the `./setup_gum_linux.sh` script:
+      1. It will create a new folder/wine-prefix  `~/.wine_gum_dotnet8`&#x20;
+      2. It will create a new  `~/bin/gum`  script with an  `upgrade`  option for future upgrades
+   4. Errors and Resolutions:
+      1. If you get an error about `gum wine prefix directory already exists` then you can either rename your old directory, or install gum to a different wine prefix with `./setup_gum_linux.sh ~/.my_wine_prefix`
+2. Your Gum version >= 2026
+   1. Run the upgrade
+      1. `gum upgrade` or `~/bin/gum upgrade`
+{% endtab %}
+{% endtabs %}
+
 ## Upgrading Runtime
 
-Upgrade your Gum NuGet packages to version 2026.1.3.1. For more information, see the NuGet packages for your particular platform:
+Upgrade your Gum NuGet packages to version **2026.1.29.1**. For more information, see the NuGet packages for your particular platform:
 
 * MonoGame - [https://www.nuget.org/packages/Gum.MonoGame/](https://www.nuget.org/packages/Gum.MonoGame/)
 * KNI - [https://www.nuget.org/packages/Gum.KNI/](https://www.nuget.org/packages/Gum.KNI/)
@@ -32,15 +60,15 @@ See below for breaking changes and updates.
 
 Previous versions of GraphicalUiElement (base class for all Visuals) included the Parent property of type `IPositionedSizedObject`. This has been replaced with a Parent property of type `GraphicalUiElement`. All Parents were of type `GraphicalUiElement` already, so this change makes it easier to work with parents, avoiding the need to cast.
 
+❌Old:
+
 ```csharp
-// old:
 IPositionedSizedObject parent = SomeVisual.Parent;
 ```
 
-This is now a GraphicalUiElement:
+✅New, this is now a GraphicalUiElement:
 
 ```csharp
-// new:
 GraphicalUiElement parent = SomeVisual.Parent;
 ```
 
@@ -99,7 +127,139 @@ panel.AddChild(button);
 float parentX = ((IPositionedSizedObject)button.Visual).AbsoluteLeft;
 ```
 
+## \[Breaking] PolygonRuntime Default Size Change
+
+Previously, new `PoylgonRuntime` instances created a 10x10 square polygon. The January version of Gum changes this to a 32x32 polygon which matches the dimensions of the default polygon in the Gum tool.
+
+Users who would like to keep the default `Polygon` behavior can explicitly set the points:
+
+```csharp
+polygon.SetPoints(new List<System.Numerics.Vector2>
+{
+    new (0,0),
+    new (10,0),
+    new (10,10),
+    new (0,10),
+    new (0,0)
+}); 
+```
+
+Practically speaking most `Polygons` are set either through the Gum tool, or their points are modified after creation so this change has a low likelihood of breaking projects.
+
+## \[Breaking] SkiaGum Library in Runtimes Folder
+
+The SkiaGum folder, which contained the `SkiaGum.csproj` project, has been moved from the Gum root to the Runtimes folder.
+
+Most projects which use Skia reference the platform-specific csproj, such as SkiaGum.Maui, so these projects will not be affected by the change. Since a dedicated Silk.NET library does not exist, projects using Silk.NET and linking to source need to be changed.
+
+This may break existing projects which directly link the `SkiaGum.csproj` file. To fix this, change your .sln to reference the .csproj in the Runtimes folder, and also change any projects which reference this .csproj to also reference the csproj in the Runtimes folder.
+
+The following shows how a .sln may change:
+
+❌Old:
+
+```
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SkiaGum", "..\..\SkiaGum\SkiaGum.csproj", "{40A1FD91-0471-68E9-ABEE-C7EF715BAD8C}"
+```
+
+✅New:
+
+```
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SkiaGum", "..\..\Runtimes\SkiaGum\SkiaGum.csproj", "{40A1FD91-0471-68E9-ABEE-C7EF715BAD8C}"
+```
+
+Projects which directly reference SkiaGum.csproj also need to be updated.
+
+❌Old:
+
+```
+<ProjectReference Include="..\..\SkiaGum\SkiaGum.csproj" />
+```
+
+✅New:
+
+```
+<ProjectReference Include="..\..\Runtimes\SkiaGum\SkiaGum.csproj" />
+```
+
 ## ContainerRuntime Alpha is now int instead of float
 
 Previous versions of Gum runtime included a `ContainerRuntime` which has an `Alpha` value that was `float`. This caused confusion because the base class for `ContainerRuntime` also had an `Alpha` value of type int. The `float` version has been removed, so now only the `int` type remains.
 
+## Deprecated
+
+This section lists all deprecated types and members. Projects should migrate to the recommended types and members to avoid breaking changes in future versions.
+
+### GumService.Update&#x20;
+
+In MonoGame/KNI/FNA, GumService, often accessed through the GumUi property, no longer takes a Game instance as its first parameter. All versions of Update which take a Game instance are now obsolete.
+
+This change is being made to simplify the syntax, and to unify the syntax between XNA-likes and raylib.
+
+❌Old:
+
+```csharp
+// Update which takes a gameTime only
+GumUi.Update(this, gameTime);
+
+// Update which takes a custom GraphicalUiElement root
+GumUi.Update(this, gameTime, customRoot);
+
+// Update which takes a list of elements to update
+GumUi.Update(this, gameTime, listOfElements);
+```
+
+✅New:
+
+```csharp
+// Update which takes a gameTime only
+GumUi.Update(gameTime);
+
+// Update which takes a custom GraphicalUiElement root
+GumUi.Update(gameTime, customRoot);
+
+// Update which takes a list of elements to update
+GumUi.Update(gameTime, listOfElements);
+```
+
+### ListBox.ListBoxItemGumType and ListBox.ListBoxItemFormsType
+
+`ListBox.ListBoxItemGumType` and `ListBox.ListBoxItemFormsType` have been marked as obsolete because these require implementations to have specific constructors. Instead, VisualTemplate and FrameworkElementTemplate can provide delegates which return instances.
+
+❌Old:
+
+```csharp
+listBox.ListBoxItemGumType = typeof(SomeVisualType);
+
+otherListBox.ListBoxItemFormsType = typeof(SomeFormsType);
+```
+
+✅New:
+
+```csharp
+listBox.VisualTemplate = new VisualTemplate(typeof(SomeVisualType));
+// or
+listBox.VisualTemplate = new VisualTemplate(new SomeVisualType());
+
+otherListBox.FrameworkElementTemplate = 
+    new FrameworkElementTemplate(typeof(SomeFormsType));
+// or
+otherListBox.FrameworkElementTemplate = 
+    new FrameworkElementTemplate(() => new SomeFormsType()));
+```
+
+### TextRuntime.MaximumNumberOfLines ⇒ TextRuntime.MaxNumberOfLines
+
+This change only affects the SkiaSharp runtimes. The property name `MaximumNumberOfLines` has been deprecated in favor of `MaxNumberOfLines` to address code generation issues and to unify the API between Skia and other runtimes such as MonoGame.
+
+❌Old:
+
+```csharp
+myTextRuntime.MaximumNumberOfLines = 3;
+```
+
+✅New:
+
+```csharp
+myTextRuntime.MaxNumberOfLines = 3;
+```

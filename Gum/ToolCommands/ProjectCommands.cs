@@ -12,6 +12,7 @@ using Gum.Plugins;
 using System.Linq;
 using Gum.Commands;
 using Gum.Services;
+using Gum.Plugins.InternalPlugins.VariableGrid;
 
 namespace Gum.ToolCommands;
 
@@ -22,16 +23,25 @@ public class ProjectCommands
     private readonly ISelectedState _selectedState;
     private readonly IGuiCommands _guiCommands;
     private readonly IFileCommands _fileCommands;
+    private readonly IProjectManager _projectManager;
+    private readonly IProjectState _projectState;
+    private readonly StandardElementsManagerGumTool _standardElementsManagerGumTool;
 
     #endregion
-    
-    public ProjectCommands(ISelectedState selectedState, 
-        IGuiCommands guiCommands, 
-        IFileCommands fileCommands)
+
+    public ProjectCommands(ISelectedState selectedState,
+        IGuiCommands guiCommands,
+        IFileCommands fileCommands,
+        IProjectManager projectManager,
+        IProjectState projectState,
+        StandardElementsManagerGumTool standardElementsManagerGumTool)
     {
         _selectedState = selectedState;
         _guiCommands = guiCommands;
         _fileCommands = fileCommands;
+        _projectManager = projectManager;
+        _projectState = projectState;
+        _standardElementsManagerGumTool = standardElementsManagerGumTool;
     }
     
     #region Screens
@@ -53,11 +63,11 @@ public class ProjectCommands
     public void AddScreen(ScreenSave screenSave)
     {
         screenSave.Initialize(StandardElementsManager.Self.GetDefaultStateFor("Screen"));
-        StandardElementsManagerGumTool.Self.FixCustomTypeConverters(screenSave);
-        ProjectManager.Self.GumProjectSave.ScreenReferences.Add(new ElementReference { Name = screenSave.Name, ElementType = ElementType.Screen });
-        ProjectManager.Self.GumProjectSave.ScreenReferences.Sort((first, second) => first.Name.CompareTo(second.Name));
-        ProjectManager.Self.GumProjectSave.Screens.Add(screenSave);
-        ProjectManager.Self.GumProjectSave.Screens.Sort((first, second) => first.Name.CompareTo(second.Name));
+        _standardElementsManagerGumTool.FixCustomTypeConverters(screenSave);
+        _projectManager.GumProjectSave.ScreenReferences.Add(new ElementReference { Name = screenSave.Name, ElementType = ElementType.Screen });
+        _projectManager.GumProjectSave.ScreenReferences.Sort((first, second) => first.Name.CompareTo(second.Name));
+        _projectManager.GumProjectSave.Screens.Add(screenSave);
+        _projectManager.GumProjectSave.Screens.Sort((first, second) => first.Name.CompareTo(second.Name));
 
 
         _fileCommands.TryAutoSaveProject();
@@ -72,7 +82,7 @@ public class ProjectCommands
 
     internal void RemoveElement(ElementSave element)
     {
-        GumProjectSave gps = ProjectManager.Self.GumProjectSave;
+        GumProjectSave gps = _projectManager.GumProjectSave;
         string name = element.Name;
         var removed = false;
         if (element is ScreenSave asScreenSave)
@@ -122,7 +132,7 @@ public class ProjectCommands
     {
         string behaviorName = behavior.Name;
 
-        GumProjectSave gps = ProjectManager.Self.GumProjectSave;
+        GumProjectSave gps = _projectManager.GumProjectSave;
         List<BehaviorReference> references = gps.BehaviorReferences;
 
         references.RemoveAll(item => item.Name == behavior.Name);
@@ -168,7 +178,7 @@ public class ProjectCommands
 
     public void AddComponent(ComponentSave componentSave)
     {
-        var gumProject = ProjectState.Self.GumProjectSave;
+        var gumProject = _projectState.GumProjectSave;
         gumProject.ComponentReferences.Add(new ElementReference { Name = componentSave.Name, ElementType = ElementType.Component });
         gumProject.ComponentReferences.Sort((first, second) => first.Name.CompareTo(second.Name));
         gumProject.Components.Add(componentSave);
@@ -189,7 +199,7 @@ public class ProjectCommands
         componentSave.BaseType = "Container";
 
         componentSave.InitializeDefaultAndComponentVariables();
-        StandardElementsManagerGumTool.Self.FixCustomTypeConverters(componentSave);
+        _standardElementsManagerGumTool.FixCustomTypeConverters(componentSave);
 
 
         // components shouldn't set their positions to 0 by default, so if the

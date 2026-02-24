@@ -24,7 +24,7 @@ public class Sprite : SpriteBatchRenderableBase,
     ICloneable,
     IRenderTargetTextureReferencer
 {
-    #region Fields
+    #region Fields / Properties
 
 
     static Texture2D? mInvalidTexture;
@@ -39,10 +39,30 @@ public class Sprite : SpriteBatchRenderableBase,
     public int CurrentFrameIndex
     {
         get => mCurrentFrameIndex;
-        set => mCurrentFrameIndex = value;
+        set
+        {
+            mCurrentFrameIndex = value;
+
+            if (CurrentChain != null && CurrentChain.Count > 0)
+            {
+                double time = 0;
+                int clampedIndex = System.Math.Clamp(value, 0, CurrentChain.Count - 1);
+                for (int i = 0; i < clampedIndex; i++)
+                {
+                    time += CurrentChain[i].FrameLength;
+                }
+                mTimeIntoAnimation = time;
+            }
+        }
     }
 
     protected float mAnimationSpeed = 1;
+    public float AnimationSpeed
+    {
+        get => mAnimationSpeed;
+        set => mAnimationSpeed = value;
+    }
+
     protected double mTimeIntoAnimation;
 
     public double TimeIntoAnimation
@@ -154,9 +174,7 @@ public class Sprite : SpriteBatchRenderableBase,
 
     Texture2D mTexture;
 
-    #endregion
 
-    #region Properties
 
     // todo:  Anim sizing
 
@@ -266,6 +284,15 @@ public class Sprite : SpriteBatchRenderableBase,
         get;
         set;
     }
+
+    bool mIsAnimationChainLooping = true;
+    public bool IsAnimationChainLooping
+    {
+        get => mIsAnimationChainLooping;
+        set => mIsAnimationChainLooping = value;
+    }
+
+    public event Action AnimationChainCycled;
 
     ObservableCollectionNoReset<IRenderableIpso> mChildren;
     public ObservableCollection<IRenderableIpso> Children
@@ -682,26 +709,13 @@ public class Sprite : SpriteBatchRenderableBase,
             objectCausingRendering = ipso;
         }
 
-        Renderer renderer = null;
-        if (managers == null)
-        {
-            renderer = Renderer.Self;
-        }
-        else
-        {
-            renderer = managers.Renderer;
-        }
+        Renderer renderer = managers.Renderer ?? Renderer.Self;
 
-        Texture2D? textureToUse = texture;
+        Texture2D? textureToUse = texture ?? InvalidTexture;
 
         if (textureToUse == null)
         {
-            textureToUse = InvalidTexture;
-
-            if (textureToUse == null)
-            {
-                return;
-            }
+            return;
         }
 
         SpriteEffects effects = SpriteEffects.None;
@@ -712,7 +726,6 @@ public class Sprite : SpriteBatchRenderableBase,
         if (flipHorizontal)
         {
             effects |= SpriteEffects.FlipHorizontally;
-            //rotationInDegrees *= -1;
         }
 
         var rotationInRadians = MathHelper.ToRadians(rotationInDegrees);
@@ -907,7 +920,29 @@ public class Sprite : SpriteBatchRenderableBase,
 
             AnimationChain animationChain = mAnimationChains[mCurrentChainIndex];
 
-            mTimeIntoAnimation = MathFunctions.Loop(mTimeIntoAnimation, animationChain.TotalLength, out mJustCycled);
+            if (IsAnimationChainLooping)
+            {
+                mTimeIntoAnimation = MathFunctions.Loop(mTimeIntoAnimation, animationChain.TotalLength, out mJustCycled);
+            }
+            else
+            {
+                if (mTimeIntoAnimation >= animationChain.TotalLength)
+                {
+                    mTimeIntoAnimation = animationChain.TotalLength;
+                    mCurrentFrameIndex = animationChain.Count - 1;
+                    Animate = false;
+                    mJustCycled = true;
+                }
+                else
+                {
+                    mJustCycled = false;
+                }
+            }
+
+            if (mJustCycled)
+            {
+                AnimationChainCycled?.Invoke();
+            }
 
             UpdateFrameBasedOffOfTimeIntoAnimation();
 

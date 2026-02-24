@@ -314,6 +314,62 @@ public class ImageRegionSelectionControl : GraphicsDeviceControl
         }
     }
 
+    bool canChangeX = true;
+    public bool CanChangeX
+    {
+        get => canChangeX;
+        set
+        {
+            canChangeX = value;
+            foreach (var item in mRectangleSelectors)
+            {
+                item.CanChangeX = canChangeX;
+            }
+        }
+    }
+
+    bool canChangeY = true;
+    public bool CanChangeY
+    {
+        get => canChangeY;
+        set
+        {
+            canChangeY = value;
+            foreach (var item in mRectangleSelectors)
+            {
+                item.CanChangeY = canChangeY;
+            }
+        }
+    }
+
+    bool canChangeWidth = true;
+    public bool CanChangeWidth
+    {
+        get => canChangeWidth;
+        set
+        {
+            canChangeWidth = value;
+            foreach (var item in mRectangleSelectors)
+            {
+                item.CanChangeWidth = canChangeWidth;
+            }
+        }
+    }
+
+    bool canChangeHeight = true;
+    public bool CanChangeHeight
+    {
+        get => canChangeHeight;
+        set
+        {
+            canChangeHeight = value;
+            foreach (var item in mRectangleSelectors)
+            {
+                item.CanChangeHeight = canChangeHeight;
+            }
+        }
+    }
+
     public bool ShowFullAlpha
     {
         get
@@ -342,12 +398,12 @@ public class ImageRegionSelectionControl : GraphicsDeviceControl
 
     #region Events
 
-    public event EventHandler StartRegionChanged;
-    public new event EventHandler RegionChanged;
-    public event EventHandler EndRegionChanged;
+    public event EventHandler? StartRegionChanged;
+    public new event EventHandler? RegionChanged;
+    public event EventHandler? EndRegionChanged;
 
-    public event EventHandler MouseWheelZoom;
-    public event Action Panning;
+    public event EventHandler? MouseWheelZoom;
+    public event Action? Panning;
     #endregion
 
     #region Methods
@@ -453,6 +509,10 @@ public class ImageRegionSelectionControl : GraphicsDeviceControl
         newSelector.EndRegionChanged += EndRegionChangedInternal;
         newSelector.SnappingGridSize = snappingGridSize;
         newSelector.RoundToUnitCoordinates = mRoundRectangleSelectorToUnit;
+        newSelector.CanChangeX = canChangeX;
+        newSelector.CanChangeY = canChangeY;
+        newSelector.CanChangeWidth = canChangeWidth;
+        newSelector.CanChangeHeight = canChangeHeight;
 
         mRectangleSelectors.Add(newSelector);
 
@@ -479,17 +539,17 @@ public class ImageRegionSelectionControl : GraphicsDeviceControl
         }
     }
 
-    private void HandleStartRegionChanged(object sender, EventArgs e)
+    private void HandleStartRegionChanged(object? sender, EventArgs e)
     {
         StartRegionChanged?.Invoke(this, null);
     }
 
-    void RegionChangedInternal(object sender, EventArgs e)
+    void RegionChangedInternal(object? sender, EventArgs e)
     {
         RegionChanged?.Invoke(this, null);
     }
 
-    void EndRegionChangedInternal(object sender, EventArgs e)
+    void EndRegionChangedInternal(object? sender, EventArgs e)
     {
         EndRegionChanged?.Invoke(this, null);
     }
@@ -522,7 +582,7 @@ public class ImageRegionSelectionControl : GraphicsDeviceControl
         }
     }
 
-    void HandleMouseWheel(object sender, MouseEventArgs e)
+    void HandleMouseWheel(object? sender, MouseEventArgs e)
     {
         if (mAvailableZoomLevels != null)
         {

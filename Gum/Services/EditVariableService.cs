@@ -18,6 +18,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Gum.Commands;
 using Gum.Services.Dialogs;
+using Gum.Undo;
 using WpfDataUi.DataTypes;
 
 namespace Gum.Services;
@@ -51,16 +52,19 @@ public class EditVariableService : IEditVariableService
     private readonly IDialogService _dialogService;
     private readonly IGuiCommands _guiCommands;
     private readonly IFileCommands _fileCommands;
+    private readonly IUndoManager _undoManager;
 
-    public EditVariableService(IRenameLogic renameLogic, 
-        IDialogService dialogService, 
+    public EditVariableService(IRenameLogic renameLogic,
+        IDialogService dialogService,
         IGuiCommands guiCommands,
-        IFileCommands fileCommands)
+        IFileCommands fileCommands,
+        IUndoManager undoManager)
     {
         _renameLogic = renameLogic;
         _dialogService = dialogService;
         _guiCommands = guiCommands;
         _fileCommands = fileCommands;
+        _undoManager = undoManager;
     }
 
     public void TryAddEditVariableOptions(InstanceMember instanceMember, VariableSave variableSave, IStateContainer stateListCategoryContainer)
@@ -133,8 +137,8 @@ public class EditVariableService : IEditVariableService
 
 
 
-        var changes = _renameLogic.GetVariableChangesForRenamedVariable(container, variable.Name, variable.ExposedAsName);
-        string changesDetails = GetChangesDetails(changes);
+        var changes = _renameLogic.GetChangesForRenamedVariable(container, variable.Name, variable.ExposedAsName);
+        string changesDetails = changes.GetChangesDetails();
 
         if(!string.IsNullOrEmpty(changesDetails))
         {
@@ -149,55 +153,10 @@ public class EditVariableService : IEditVariableService
         }
     }
 
-    private static string GetChangesDetails(VariableChangeResponse changes)
-    {
-        var variableChanges = changes.VariableChanges;
-
-        var changesDetails = string.Empty;
-
-        if (variableChanges.Count > 0)
-        {
-            if (!string.IsNullOrEmpty(changesDetails))
-            {
-                changesDetails += "\n\n";
-            }
-            changesDetails += "This will also rename the following variables:";
-            foreach (var change in variableChanges)
-            {
-                var containerName = change.Container.ToString();
-                if (change.Container is ElementSave elementSave)
-                {
-                    containerName = elementSave.Name;
-                }
-                changesDetails += $"\n{change.Variable.Name} in {containerName}";
-            }
-        }
-        var variableReferenceChanges = changes.VariableReferenceChanges;
-        if (variableReferenceChanges.Count > 0)
-        {
-            if(!string.IsNullOrEmpty(changesDetails))
-            {
-                changesDetails += "\n\n";
-            }
-            changesDetails += "This will also modify the following variable references:";
-            foreach (var change in variableReferenceChanges)
-            {
-                // just in case something changes this on a separate thread, let's be safe:
-                try
-                {
-                    var line = change.VariableReferenceList.ValueAsIList[change.LineIndex];
-                    changesDetails += $"\n{line} in {change.Container.Name}";
-
-                }
-                catch { }
-            }
-        }
-
-        return changesDetails;
-    }
-
     private void RenameExposedVariable(VariableSave variable, string newName, IStateContainer container, VariableChangeResponse changeResponse)
     {
+        using var undoLock = _undoManager.RequestLock();
+
         var variableChanges = changeResponse.VariableChanges;
 
         var oldName = variable.ExposedAsName;
@@ -253,8 +212,8 @@ public class EditVariableService : IEditVariableService
         _dialogService.Show<AddVariableViewModel>(vm =>
         {
             var changes =
-                _renameLogic.GetVariableChangesForRenamedVariable(container, variable.Name, variable.Name);
-            string changesDetails = GetChangesDetails(changes);
+                _renameLogic.GetChangesForRenamedVariable(container, variable.Name, variable.Name);
+            string changesDetails = changes.GetChangesDetails();
 
             vm.RenameType = RenameType.NormalName;
             vm.Variable = variable;

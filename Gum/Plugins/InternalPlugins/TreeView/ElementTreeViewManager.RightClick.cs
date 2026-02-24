@@ -5,7 +5,7 @@ using CommonFormsAndControls;
 using Gum.ToolCommands;
 using Gum.DataTypes;
 using Gum.ToolStates;
-using System.Windows.Forms;
+using System.Windows.Controls;
 using System.Diagnostics;
 using System.IO;
 using ToolsUtilities;
@@ -18,99 +18,35 @@ using Gum.Dialogs;
 using Gum.Services;
 using Gum.Services.Dialogs;
 using Gum.Plugins.ImportPlugin.ViewModel;
+using Gum.Plugins.InternalPlugins.VariableGrid;
 
 namespace Gum.Managers;
 
 public partial class ElementTreeViewManager
 {
 
-    #region Fields
+    #region Menu helpers
 
-
-
-    ToolStripMenuItem mAddScreen;
-    ToolStripMenuItem mImportScreen;
-
-    ToolStripMenuItem mImportComponent;
-    ToolStripMenuItem mAddLinkedComponent;
-
-    ToolStripMenuItem mAddInstance;
-    ToolStripMenuItem mAddParentInstance;
-    ToolStripMenuItem mSaveObject;
-    ToolStripMenuItem mGoToDefinition;
-    ToolStripMenuItem mCreateComponent;
-    ToolStripMenuItem mDeleteObject;
-
-    ToolStripMenuItem mAddFolder;
-
-    ToolStripMenuItem duplicateElement;
-    #endregion
-
-
-
-    #region Initialize and event handlers
-
-    private void InitializeMenuItems()
+    private void AddMenuItem(string text, Action clickAction)
     {
-        mAddScreen = new ToolStripMenuItem();
-        mAddScreen.Text = "Add Screen";
-        mAddScreen.Click += (_, _) => _dialogService.Show<AddScreenDialogViewModel>();
-
-        mImportScreen = new ToolStripMenuItem();
-        mImportScreen.Text = "Import Screen";
-        mImportScreen.Click += ImportScreenClick;
-
-        mImportComponent = new ToolStripMenuItem();
-        mImportComponent.Text = "Import Components";
-        mImportComponent.Click += ImportComponentsClick;
-
-        mAddLinkedComponent = new ToolStripMenuItem();
-        mAddLinkedComponent.Text = "Add Linked Component";
-        mAddLinkedComponent.Click += HandleAddLinkedComponentClick;
-
-        mAddInstance = new ToolStripMenuItem();
-        mAddInstance.Text = "Add Instance";
-        mAddInstance.Click += (_, _) => _dialogService.Show<AddInstanceDialogViewModel>();
-
-        mAddParentInstance = new ToolStripMenuItem();
-        mAddParentInstance.Text = "Add Parent Instance";
-        mAddParentInstance.Click +=
-            (_, _) => _dialogService.Show<AddInstanceDialogViewModel>(x => x.ParentInstance = true);
-
-        mSaveObject = new ToolStripMenuItem();
-        mSaveObject.Text = "Force Save Object";
-        mSaveObject.Click += ForceSaveObjectClick;
-
-        mGoToDefinition = new ToolStripMenuItem();
-        mGoToDefinition.Text = "Go to definition";
-        mGoToDefinition.Click += OnGoToDefinitionClick;
-
-        mCreateComponent = new ToolStripMenuItem();
-        mCreateComponent.Text = "Create Component";
-        mCreateComponent.Click += CreateComponentClick;
-
-        mAddFolder = new ToolStripMenuItem();
-        mAddFolder.Text = "Add Folder";
-        mAddFolder.Click += AddFolderClick;
-
-        mDeleteObject = new ToolStripMenuItem();
-        mDeleteObject.Text = "Delete";
-        mDeleteObject.Click += HandleDeleteObjectClick;
-
-        duplicateElement = new ToolStripMenuItem();
-        duplicateElement.Text = "To Be Replaced...";
-        duplicateElement.Click += HandleDuplicateElementClick;
+        var menuItem = new MenuItem { Header = text };
+        menuItem.Click += (_, _) => clickAction();
+        _contextMenu.Items.Add(menuItem);
     }
 
+    private void AddSeparator() => _contextMenu.Items.Add(new Separator());
 
+    #endregion
 
-    void HandleDeleteObjectClick(object? sender, EventArgs e)
+    #region Event handlers
+
+    void HandleDeleteObject()
     {
         using var undoLock = _undoManager.RequestLock();
         _deleteLogic.HandleDeleteCommand();
     }
 
-    void HandleDuplicateElementClick(object? sender, EventArgs e)
+    void HandleDuplicateElement()
     {
         if (_selectedState.SelectedScreen != null ||
             _selectedState.SelectedComponent != null)
@@ -119,7 +55,7 @@ public partial class ElementTreeViewManager
         }
     }
 
-    void OnGoToDefinitionClick(object? sender, EventArgs e)
+    void HandleGoToDefinition()
     {
         if (_selectedState.SelectedInstance != null)
         {
@@ -129,7 +65,7 @@ public partial class ElementTreeViewManager
         }
     }
 
-    void CreateComponentClick(object? sender, EventArgs e)
+    void HandleCreateComponent()
     {
         if (_selectedState.SelectedScreen != null ||
             _selectedState.SelectedComponent != null)
@@ -138,12 +74,12 @@ public partial class ElementTreeViewManager
         }
     }
 
-    void ForceSaveObjectClick(object? sender, EventArgs e)
+    void HandleForceSaveObject()
     {
         _fileCommands.ForceSaveElement(_selectedState.SelectedElement);
     }
 
-    void AddFolderClick(object? sender, EventArgs e)
+    void HandleAddFolder()
     {
         if (SelectedNode != null)
         {
@@ -152,7 +88,7 @@ public partial class ElementTreeViewManager
     }
 
 
-    void HandleViewInExplorer(object? sender, EventArgs e)
+    void HandleViewInExplorer()
     {
         var treeNode = _selectedState.SelectedTreeNode;
 
@@ -189,8 +125,8 @@ public partial class ElementTreeViewManager
                             System.IO.Directory.CreateDirectory(fullFile);
                         }
                     }
-                    var startInfo = new ProcessStartInfo 
-                    { 
+                    var startInfo = new ProcessStartInfo
+                    {
                         UseShellExecute = true ,
                         FileName = fullFile
                     };
@@ -208,7 +144,7 @@ public partial class ElementTreeViewManager
         }
     }
 
-    void HandleDeleteFolder(object? sender, EventArgs e)
+    void HandleDeleteFolder()
     {
         var treeNode = _selectedState.SelectedTreeNode;
 
@@ -221,43 +157,43 @@ public partial class ElementTreeViewManager
     #endregion
 
 
-    public void PopulateMenuStrip()
+    public void PopulateContextMenu()
     {
-        mMenuStrip.Items.Clear();
+        _contextMenu.Items.Clear();
 
         if (SelectedNode != null)
         {
-            #region InstanceSave 
+            #region InstanceSave
             // InstanceSave selected
             if (_selectedState.SelectedInstance != null)
             {
                 var containerElement = _selectedState.SelectedElement;
-                mMenuStrip.Items.Add(mGoToDefinition);
+                AddMenuItem("Go to definition", HandleGoToDefinition);
 
                 if (containerElement != null)
                 {
-                    mMenuStrip.Items.Add("-");
+                    AddSeparator();
 
-                    mMenuStrip.Items.Add(mCreateComponent);
+                    AddMenuItem("Create Component", HandleCreateComponent);
                 }
 
-                mMenuStrip.Items.Add("-");
+                AddSeparator();
 
                 var deleteText = _selectedState.SelectedInstances.Count() > 1
                     ? $"Delete {_selectedState.SelectedInstances.Count()} instances"
                     : $"Delete {_selectedState.SelectedInstance.Name}";
-                mMenuStrip.Items.Add(deleteText, null, (not, used) => _editCommands.DeleteSelection());
+                AddMenuItem(deleteText, () => _editCommands.DeleteSelection());
 
 
 
                 if (containerElement != null)
                 {
-                    mMenuStrip.Items.Add("-");
+                    AddSeparator();
 
-                    mAddInstance.Text = $"Add child object to '{_selectedState.SelectedInstance.Name}'";
-                    mMenuStrip.Items.Add(mAddInstance);
-                    mAddParentInstance.Text = $"Add parent object to '{_selectedState.SelectedInstance.Name}'";
-                    mMenuStrip.Items.Add(mAddParentInstance);
+                    AddCreateInstanceMenuItems($"Add child object to '{_selectedState.SelectedInstance.Name}'");
+
+                    AddMenuItem($"Add parent object to '{_selectedState.SelectedInstance.Name}'",
+                        () => _dialogService.Show<AddInstanceDialogViewModel>(x => x.IsAddingAsParentToSelectedInstance = true));
 
                     if (!string.IsNullOrEmpty(containerElement?.BaseType))
                     {
@@ -265,13 +201,14 @@ public partial class ElementTreeViewManager
 
                         if (containerBase is ScreenSave || containerBase is ComponentSave)
                         {
-                            mMenuStrip.Items.Add($"Add {_selectedState.SelectedInstance.Name} to base {containerBase}",
-                                null,
-                                (not, used) => HandleMoveToBase(_selectedState.SelectedInstances, _selectedState.SelectedElement, containerBase));
+                            AddMenuItem($"Add {_selectedState.SelectedInstance.Name} to base {containerBase}",
+                                () => HandleMoveToBase(_selectedState.SelectedInstances, _selectedState.SelectedElement, containerBase));
                         }
                     }
 
                 }
+                AddCopyMenuItems();
+                AddCutMenuItems();
                 AddPasteMenuItems();
             }
 
@@ -281,32 +218,38 @@ public partial class ElementTreeViewManager
             // ScreenSave or ComponentSave
             else if (_selectedState.SelectedScreen != null || _selectedState.SelectedComponent != null)
             {
-                mMenuStrip.Items.Add("View in explorer", null, HandleViewInExplorer);
+                AddMenuItem("View in explorer", HandleViewInExplorer);
 
-                mMenuStrip.Items.Add("View References", null, HandleViewReferences);
+                AddMenuItem("View References", HandleViewReferences);
 
-                mMenuStrip.Items.Add("-");
+                AddSeparator();
 
-                mAddInstance.Text = "Add object to " + _selectedState.SelectedElement!.Name;
-                mMenuStrip.Items.Add(mAddInstance);
-                mMenuStrip.Items.Add(mSaveObject);
-                if (_selectedState.SelectedScreen != null)
-                {
-                    duplicateElement.Text = $"Duplicate {_selectedState.SelectedScreen.Name}";
-                }
-                else
-                {
-                    duplicateElement.Text = $"Duplicate {_selectedState.SelectedComponent!.Name}";
-                }
-                mMenuStrip.Items.Add(duplicateElement);
+                AddCreateInstanceMenuItems("Add object to " + _selectedState.SelectedElement!.Name);
 
+                AddMenuItem("Force Save Object", HandleForceSaveObject);
+
+                var duplicateText = _selectedState.SelectedScreen != null
+                    ? $"Duplicate {_selectedState.SelectedScreen.Name}"
+                    : $"Duplicate {_selectedState.SelectedComponent!.Name}";
+                AddMenuItem(duplicateText, HandleDuplicateElement);
+
+                AddCopyMenuItems();
+                AddCutMenuItems();
                 AddPasteMenuItems();
 
-                mMenuStrip.Items.Add("-");
+                AddSeparator();
 
+                AddMenuItem("Delete " + _selectedState.SelectedElement.ToString(), HandleDeleteObject);
 
-                mDeleteObject.Text = "Delete " + _selectedState.SelectedElement.ToString();
-                mMenuStrip.Items.Add(mDeleteObject);
+                // Add favorite toggle for components only
+                if (_selectedState.SelectedComponent != null)
+                {
+                    AddSeparator();
+
+                    var isFavorite = _favoriteComponentManager.IsFavorite(_selectedState.SelectedComponent);
+                    var favoriteText = isFavorite ? "Remove from Favorites" : "Add to Favorites";
+                    AddMenuItem(favoriteText, HandleToggleFavorite);
+                }
 
             }
             #endregion
@@ -315,10 +258,9 @@ public partial class ElementTreeViewManager
 
             else if (_selectedState.SelectedBehavior != null)
             {
-                mMenuStrip.Items.Add("View in explorer", null, HandleViewInExplorer);
-                mMenuStrip.Items.Add("-");
-                mDeleteObject.Text = "Delete " + _selectedState.SelectedBehavior.ToString();
-                mMenuStrip.Items.Add(mDeleteObject);
+                AddMenuItem("View in explorer", HandleViewInExplorer);
+                AddSeparator();
+                AddMenuItem("Delete " + _selectedState.SelectedBehavior.ToString(), HandleDeleteObject);
             }
 
             #endregion
@@ -327,11 +269,11 @@ public partial class ElementTreeViewManager
 
             else if (_selectedState.SelectedStandardElement != null)
             {
-                mMenuStrip.Items.Add("View in explorer", null, HandleViewInExplorer);
+                AddMenuItem("View in explorer", HandleViewInExplorer);
 
-                mMenuStrip.Items.Add("-");
+                AddSeparator();
 
-                mMenuStrip.Items.Add(mSaveObject);
+                AddMenuItem("Force Save Object", HandleForceSaveObject);
             }
 
             #endregion
@@ -340,15 +282,15 @@ public partial class ElementTreeViewManager
 
             else if (SelectedNode.IsTopScreenContainerTreeNode() || SelectedNode.IsScreensFolderTreeNode())
             {
-                mMenuStrip.Items.Add(mAddScreen);
-                mMenuStrip.Items.Add(mImportScreen);
-                mMenuStrip.Items.Add(mAddFolder);
-                mMenuStrip.Items.Add("View in explorer", null, HandleViewInExplorer);
+                AddMenuItem("Add Screen", () => _dialogService.Show<AddScreenDialogViewModel>());
+                AddMenuItem("Import Screen", HandleImportScreen);
+                AddMenuItem("Add Folder", HandleAddFolder);
+                AddMenuItem("View in explorer", HandleViewInExplorer);
 
                 if (SelectedNode.IsScreensFolderTreeNode())
                 {
-                    mMenuStrip.Items.Add("Delete Folder", null, HandleDeleteFolder);
-                    mMenuStrip.Items.Add("Rename Folder", null, HandleRenameFolder);
+                    AddMenuItem("Delete Folder", HandleDeleteFolder);
+                    AddMenuItem("Rename Folder", HandleRenameFolder);
                 }
             }
 
@@ -358,17 +300,15 @@ public partial class ElementTreeViewManager
 
             else if (SelectedNode.IsTopComponentContainerTreeNode() || SelectedNode.IsComponentsFolderTreeNode())
             {
-                
-
-                mMenuStrip.Items.Add("Add Component", null, (_,_) => _dialogService.Show<AddComponentDialogViewModel>());
-                mMenuStrip.Items.Add(mImportComponent);
-                mMenuStrip.Items.Add(mAddFolder);
-                mMenuStrip.Items.Add("View in explorer", null, HandleViewInExplorer);
+                AddMenuItem("Add Component", () => _dialogService.Show<AddComponentDialogViewModel>());
+                AddMenuItem("Import Components", HandleImportComponents);
+                AddMenuItem("Add Folder", HandleAddFolder);
+                AddMenuItem("View in explorer", HandleViewInExplorer);
 
                 if (SelectedNode.IsComponentsFolderTreeNode())
                 {
-                    mMenuStrip.Items.Add("Delete Folder", null, HandleDeleteFolder);
-                    mMenuStrip.Items.Add("Rename Folder", null, HandleRenameFolder);
+                    AddMenuItem("Delete Folder", HandleDeleteFolder);
+                    AddMenuItem("Rename Folder", HandleRenameFolder);
 
                 }
             }
@@ -379,7 +319,7 @@ public partial class ElementTreeViewManager
 
             else if (SelectedNode.IsTopStandardElementTreeNode())
             {
-                mMenuStrip.Items.Add("View in explorer", null, HandleViewInExplorer);
+                AddMenuItem("View in explorer", HandleViewInExplorer);
             }
 
             #endregion
@@ -388,9 +328,9 @@ public partial class ElementTreeViewManager
 
             else if (SelectedNode.IsTopBehaviorTreeNode())
             {
-                mMenuStrip.Items.Add("Add Behavior", null, HandleAddBehavior);
-                mMenuStrip.Items.Add("Import Behavior", null, HandleImportBehavior);
-                mMenuStrip.Items.Add("View in explorer", null, HandleViewInExplorer);
+                AddMenuItem("Add Behavior", HandleAddBehavior);
+                AddMenuItem("Import Behavior", HandleImportBehavior);
+                AddMenuItem("View in explorer", HandleViewInExplorer);
 
             }
 
@@ -398,21 +338,110 @@ public partial class ElementTreeViewManager
         }
     }
 
+    private void AddCreateInstanceMenuItems(string itemText)
+    {
+        var parentMenuItem = new MenuItem { Header = itemText };
+        _contextMenu.Items.Add(parentMenuItem);
+
+        // Add favorited components first
+        var favoritedComponents = _favoriteComponentManager.GetFilteredFavoritedComponentsFor(
+            _selectedState.SelectedElement,
+            _circularReferenceManager);
+        if (favoritedComponents.Count > 0)
+        {
+            foreach (var component in favoritedComponents)
+            {
+                var menuItem = new MenuItem { Header = component.Name };
+                parentMenuItem.Items.Add(menuItem);
+
+                var componentName = component.Name;
+                menuItem.Click += (_, _) =>
+                {
+                    var selectedElement = _selectedState.SelectedElement;
+                    if (selectedElement != null)
+                    {
+                        var newInstanceElementType = ObjectFinder.Self.GetElementSave(componentName)!;
+                        var name = _elementCommands.GetUniqueNameForNewInstance(newInstanceElementType, selectedElement);
+
+                        var viewModel = new AddInstanceDialogViewModel(
+                            _selectedState,
+                            _nameVerifier,
+                            _elementCommands,
+                            _setVariableLogic);
+                        viewModel.TypeToCreate = componentName;
+                        viewModel.Value = name;
+                        viewModel.OnAffirmative();
+                    }
+                };
+            }
+
+            // Add separator after favorited components
+            parentMenuItem.Items.Add(new Separator());
+        }
+
+        // Add child menu items for each type
+        var types = new[] {
+            "Circle",
+            "ColoredRectangle",
+            "Container",
+            "NineSlice",
+            "Polygon",
+            "Rectangle",
+            "Sprite",
+            "Text"
+        };
+
+        foreach (var type in types)
+        {
+            var menuItem = new MenuItem { Header = type };
+            parentMenuItem.Items.Add(menuItem);
+
+            menuItem.Click += (_, _) =>
+            {
+                var selectedElement = _selectedState.SelectedElement;
+                if (selectedElement != null)
+                {
+                    var newInstanceElementType = ObjectFinder.Self.GetElementSave(type)!;
+                    var name = _elementCommands.GetUniqueNameForNewInstance(newInstanceElementType, selectedElement);
+
+                    var viewModel = new AddInstanceDialogViewModel(
+                        _selectedState,
+                        _nameVerifier,
+                        _elementCommands,
+                        _setVariableLogic);
+                    viewModel.TypeToCreate = type;
+                    viewModel.Value = name;
+                    viewModel.OnAffirmative();
+                }
+            };
+        }
+    }
+
+    private void AddCopyMenuItems()
+    {
+        AddMenuItem("Copy", () => _copyPasteLogic.OnCopy(CopyType.InstanceOrElement));
+    }
+
+    private void AddCutMenuItems()
+    {
+        AddMenuItem("Cut", () => _copyPasteLogic.OnCut(CopyType.InstanceOrElement));
+    }
+
     private void AddPasteMenuItems()
     {
         if (_copyPasteLogic.CopiedData.CopiedInstancesRecursive.Count > 0)
         {
-            mMenuStrip.Items.Add("Paste", null, HandlePaste);
+            AddMenuItem("Paste", () => _copyPasteLogic.OnPaste(CopyType.InstanceOrElement, TopOrRecursive.Recursive));
         }
         if (_copyPasteLogic.CopiedData.CopiedInstancesSelected.Count > 0)
         {
             string text;
-            if (_copyPasteLogic.CopiedData.CopiedInstancesSelected.Count == 0)
+            if (_copyPasteLogic.CopiedData.CopiedInstancesSelected.Count == 1)
                 text = "Paste Top Level Instance";
             else
                 text = "Paste Top Level Instances";
 
-            mMenuStrip.Items.Add(text, null, HandlePasteTopLevel);
+            AddMenuItem(text, () => _copyPasteLogic.OnPaste(CopyType.InstanceOrElement, TopOrRecursive.Top));
         }
     }
 
@@ -431,22 +460,28 @@ public partial class ElementTreeViewManager
             null);
     }
 
-    private void HandlePaste(object? sender, EventArgs e)
+    private void HandleToggleFavorite()
     {
-        _copyPasteLogic.OnPaste(CopyType.InstanceOrElement, TopOrRecursive.Recursive);
+        var component = _selectedState.SelectedComponent;
+        if (component == null) return;
+
+        var isFavorite = _favoriteComponentManager.IsFavorite(component);
+        if (isFavorite)
+        {
+            _favoriteComponentManager.RemoveFromFavorites(component);
+        }
+        else
+        {
+            _favoriteComponentManager.AddToFavorites(component);
+        }
     }
 
-    private void HandlePasteTopLevel(object? sender, EventArgs e)
-    {
-        _copyPasteLogic.OnPaste(CopyType.InstanceOrElement, TopOrRecursive.Top);
-    }
-
-    private void HandleViewReferences(object? sender, EventArgs e)
+    private void HandleViewReferences()
     {
         _dialogService.Show<DisplayReferencesDialog>(vm => vm.ElementSave = _selectedState.SelectedElement);
     }
 
-    private void HandleRenameFolder(object? sender, EventArgs e)
+    private void HandleRenameFolder()
     {
         _dialogService.Show<RenameFolderDialogViewModel>(vm =>
         {
@@ -454,12 +489,12 @@ public partial class ElementTreeViewManager
         });
     }
 
-    private void HandleAddBehavior(object? sender, EventArgs e)
+    private void HandleAddBehavior()
     {
         _editCommands.AddBehavior();
     }
 
-    private void HandleImportBehavior(object? sender, EventArgs args)
+    private void HandleImportBehavior()
     {
         if (GuardProjectSaved("before importing behaviors"))
         {
@@ -467,7 +502,7 @@ public partial class ElementTreeViewManager
         }
     }
 
-    public void ImportScreenClick(object? sender, EventArgs e)
+    private void HandleImportScreen()
     {
         if (GuardProjectSaved("before importing screens"))
         {
@@ -475,7 +510,7 @@ public partial class ElementTreeViewManager
         }
     }
 
-    public void ImportComponentsClick(object? sender, EventArgs e)
+    private void HandleImportComponents()
     {
         if (GuardProjectSaved("before importing components"))
         {
@@ -485,7 +520,7 @@ public partial class ElementTreeViewManager
 
     private bool GuardProjectSaved(string? reason = null)
     {
-        if (ObjectFinder.Self.GumProjectSave == null || string.IsNullOrEmpty(ProjectManager.Self.GumProjectSave.FullFileName))
+        if (ObjectFinder.Self.GumProjectSave == null || string.IsNullOrEmpty(Locator.GetRequiredService<IProjectManager>().GumProjectSave.FullFileName))
         {
             _dialogService.ShowMessage("You must first save the project");
             return false;
@@ -494,22 +529,22 @@ public partial class ElementTreeViewManager
         return true;
     }
 
-    private void HandleAddLinkedComponentClick(object sender, EventArgs e)
+    private void HandleAddLinkedComponentClick()
     {
         ////////////////Early Out/////////////////////////
-        if (string.IsNullOrEmpty(ProjectManager.Self.GumProjectSave?.FullFileName))
+        if (string.IsNullOrEmpty(Locator.GetRequiredService<IProjectManager>().GumProjectSave?.FullFileName))
         {
             _dialogService.ShowMessage("You must first save the project before adding a new component");
             return;
         }
         //////////////End Early Out////////////////////////
 
-        OpenFileDialog openFileDialog = new OpenFileDialog();
+        var openFileDialog = new System.Windows.Forms.OpenFileDialog();
         openFileDialog.Multiselect = true;
         openFileDialog.Filter = "Gum Component (*.gucx)|*.gucx";
 
         /////////////////Another Early Out////////////////////////
-        if (openFileDialog.ShowDialog() != DialogResult.OK)
+        if (openFileDialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
         {
             return;
         }
@@ -537,12 +572,12 @@ public partial class ElementTreeViewManager
             gumProject.ComponentReferences.Sort();
 
 
-            var components = ProjectManager.Self.GumProjectSave.Components;
+            var components = Locator.GetRequiredService<IProjectManager>().GumProjectSave.Components;
             components.Add(componentSave);
             components.Sort((first, second) => first.Name.CompareTo(second.Name));
 
             componentSave.InitializeDefaultAndComponentVariables();
-            StandardElementsManagerGumTool.Self.FixCustomTypeConverters(componentSave);
+            _standardElementsManagerGumTool.FixCustomTypeConverters(componentSave);
 
             lastImportedComponent = componentSave;
         }

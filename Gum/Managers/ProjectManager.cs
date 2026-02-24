@@ -1,4 +1,3 @@
-﻿using CommonFormsAndControls.Forms;
 using CommunityToolkit.Mvvm.Messaging;
 using Gum.CommandLine;
 using Gum.Commands;
@@ -9,6 +8,7 @@ using Gum.Logic.FileWatch;
 using Gum.Managers;
 using Gum.Messages;
 using Gum.Plugins;
+using Gum.Plugins.InternalPlugins.VariableGrid;
 using Gum.Services;
 using Gum.Services.Dialogs;
 using Gum.Settings;
@@ -30,7 +30,7 @@ using DialogResult = System.Windows.Forms.DialogResult;
 
 namespace Gum;
 
-public class ProjectManager
+public class ProjectManager : IProjectManager
 {
     #region Fields
 
@@ -39,14 +39,15 @@ public class ProjectManager
     static ProjectManager mSelf;
 
     bool mHaveErrorsOccurredLoadingProject = false;
-    
-    private readonly ISelectedState _selectedState;
-    private readonly IElementCommands _elementCommands;
-    private readonly IDialogService _dialogService;
-    private readonly IGuiCommands _guiCommands;
-    private readonly IFileCommands _fileCommands;
-    private readonly IMessenger _messenger;
-    private readonly FileWatchManager _fileWatchManager;
+
+    private ISelectedState _selectedState;
+    private IElementCommands _elementCommands;
+    private IDialogService _dialogService;
+    private IGuiCommands _guiCommands;
+    private IFileCommands _fileCommands;
+    private IMessenger _messenger;
+    private IFileWatchManager _fileWatchManager;
+    private StandardElementsManagerGumTool _standardElementsManagerGumTool;
 
     #endregion
 
@@ -86,13 +87,7 @@ public class ProjectManager
 
     private ProjectManager()
     {
-        _selectedState = Locator.GetRequiredService<ISelectedState>();
-        _elementCommands = Locator.GetRequiredService<IElementCommands>();
-        _dialogService = Locator.GetRequiredService<IDialogService>();
-        _guiCommands = Locator.GetRequiredService<IGuiCommands>();
-        _fileCommands = Locator.GetRequiredService<IFileCommands>();
-        _messenger =  Locator.GetRequiredService<IMessenger>();
-        _fileWatchManager = Locator.GetRequiredService<FileWatchManager>();
+
     }
 
     public void LoadSettings()
@@ -102,6 +97,14 @@ public class ProjectManager
 
     public async Task Initialize()
     {
+        _selectedState = Locator.GetRequiredService<ISelectedState>();
+        _elementCommands = Locator.GetRequiredService<IElementCommands>();
+        _dialogService = Locator.GetRequiredService<IDialogService>();
+        _guiCommands = Locator.GetRequiredService<IGuiCommands>();
+        _fileCommands = Locator.GetRequiredService<IFileCommands>();
+        _messenger =  Locator.GetRequiredService<IMessenger>();
+        _fileWatchManager = Locator.GetRequiredService<IFileWatchManager>();
+        _standardElementsManagerGumTool = Locator.GetRequiredService<StandardElementsManagerGumTool>();
 
         await CommandLineManager.Self.ReadCommandLine();
 
@@ -195,6 +198,15 @@ public class ProjectManager
 
         _gumProjectSave = GumProjectSave.Load(fileName.FullPath, out result);
 
+        if (_gumProjectSave != null && _gumProjectSave.Version > GumProjectSave.NativeVersion)
+        {
+            _dialogService.ShowMessage(
+                $"Could not load \"{fileName}\" because it was saved with a newer version of Gum " +
+                $" - version {_gumProjectSave.Version}.\n\nGum supports up to version {GumProjectSave.NativeVersion}.\n\n" +
+                $"Please update Gum to open this project.");
+            _gumProjectSave = null;
+        }
+
         string errors = result.ErrorMessage;
 
         if (!string.IsNullOrEmpty(errors))
@@ -228,7 +240,7 @@ public class ProjectManager
             {
 
                 wasModified = _gumProjectSave.Initialize();
-                StandardElementsManagerGumTool.Self.FixCustomTypeConverters(_gumProjectSave);
+                _standardElementsManagerGumTool.FixCustomTypeConverters(_gumProjectSave);
                 RecreateMissingStandardElements();
 
                 if (RecreateMissingDefinedByBaseObjects())
@@ -271,11 +283,20 @@ public class ProjectManager
             }
             PluginManager.Self.ProjectLoad(_gumProjectSave);
 
-            StandardElementsManagerGumTool.Self.RefreshStateVariablesThroughPlugins();
+            if (_gumProjectSave.Version < (int)GumProjectSave.GumxVersions.AttributeVersion)
+            {
+                // TODO: Replace placeholder URL with actual docs URL once available
+                _guiCommands.PrintOutput(
+                    $"This project is using legacy version {_gumProjectSave.Version}. " +
+                    $"The current version is {(int)GumProjectSave.GumxVersions.AttributeVersion}. " +
+                    $"For upgrading, see https://docs.flatredball.com/gum/gum-tool/upgrading/upgrading-file-gumx-version");
+            }
+
+            _standardElementsManagerGumTool.RefreshStateVariablesThroughPlugins();
 
             if (wasModified)
             {
-                ProjectManager.Self.SaveProject(forceSaveContainedElements: true);
+                SaveProject(forceSaveContainedElements: true);
             }
         }
         else
@@ -358,7 +379,7 @@ public class ProjectManager
                     {
                         if(variable.Name.EndsWith(oldName))
                         {
-                            var newName = variable.Name.Substring(0, variable.Name.Length - oldName.Length) + 
+                            var newName = variable.Name.Substring(0, variable.Name.Length - oldName.Length) +
                                 oldName.Replace(" ", "");
                             variable.Name = newName;
                             didChange = true;
@@ -450,7 +471,7 @@ public class ProjectManager
     }
 
     /// <summary>
-    /// Fixes slashes in all references, component names, and instance references. 
+    /// Fixes slashes in all references, component names, and instance references.
     /// </summary>
     /// <param name="gumProjectSave">The project for which to fix slashes.</param>
     /// <returns>Whether any changes were made.</returns>
@@ -680,7 +701,7 @@ public class ProjectManager
         }
     }
 
-    internal bool SaveProject(bool forceSaveContainedElements = false)
+    public bool SaveProject(bool forceSaveContainedElements = false)
     {
         bool succeeded = false;
 
@@ -695,7 +716,7 @@ public class ProjectManager
 
             if (shouldSave)
             {
-                PluginManager.Self.BeforeProjectSave(GumProjectSave);
+                PluginManager.Self.BeforeSavingProjectSave(GumProjectSave);
 
                 _elementCommands.SortVariables();
 
@@ -704,24 +725,28 @@ public class ProjectManager
                 try
                 {
 
+                    _fileWatchManager.IgnoreNextChangeUntil(GumProjectSave.FullFileName);
+
                     if (saveContainedElements)
                     {
                         foreach (var screenSave in GumProjectSave.Screens)
                         {
-                            PluginManager.Self.BeforeElementSave(screenSave);
+                            PluginManager.Self.BeforeSavingElementSave(screenSave);
+                            _fileWatchManager.IgnoreNextChangeUntil(screenSave.GetFullPathXmlFile());
                         }
                         foreach (var componentSave in GumProjectSave.Components)
                         {
-                            PluginManager.Self.BeforeElementSave(componentSave);
+                            PluginManager.Self.BeforeSavingElementSave(componentSave);
+                            _fileWatchManager.IgnoreNextChangeUntil(componentSave.GetFullPathXmlFile());
                         }
                         foreach (var standardElementSave in GumProjectSave.StandardElements)
                         {
-                            PluginManager.Self.BeforeElementSave(standardElementSave);
+                            PluginManager.Self.BeforeSavingElementSave(standardElementSave);
+                            _fileWatchManager.IgnoreNextChangeUntil(standardElementSave.GetFullPathXmlFile());
                         }
                     }
 
                     // todo - this should go through the plugin...
-                    _fileWatchManager.IgnoreNextChangeUntil(GumProjectSave.FullFileName);
 
                     GumCommands.Self.TryMultipleTimes(() => GumProjectSave.Save(GumProjectSave.FullFileName, saveContainedElements));
                     succeeded = true;
@@ -730,15 +755,15 @@ public class ProjectManager
                     {
                         foreach (var screenSave in GumProjectSave.Screens)
                         {
-                            PluginManager.Self.AfterElementSave(screenSave);
+                            PluginManager.Self.AfterSavingElementSave(screenSave);
                         }
                         foreach (var componentSave in GumProjectSave.Components)
                         {
-                            PluginManager.Self.AfterElementSave(componentSave);
+                            PluginManager.Self.AfterSavingElementSave(componentSave);
                         }
                         foreach (var standardElementSave in GumProjectSave.StandardElements)
                         {
-                            PluginManager.Self.AfterElementSave(standardElementSave);
+                            PluginManager.Self.AfterSavingElementSave(standardElementSave);
                         }
                     }
                 }
@@ -836,7 +861,7 @@ public class ProjectManager
             }
 
             if(result == DialogResult.OK)
-            { 
+            {
                 GumProjectSave.FullFileName = openFileDialog.FileName;
                 var filePath = new FilePath(openFileDialog.FileName);
                 PluginManager.Self.ProjectLocationSet(filePath);

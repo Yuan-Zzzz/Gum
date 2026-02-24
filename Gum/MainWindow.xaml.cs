@@ -8,11 +8,12 @@ using Gum.ViewModels;
 using System;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Media;
 using System.Windows.Shell;
 using System.Windows.Threading;
 using ControlzEx;
-using RoutedEventArgs = System.Windows.RoutedEventArgs;
 
 namespace Gum;
 #region TabLocation Enum
@@ -30,34 +31,62 @@ public enum TabLocation
 
 public partial class MainWindow : WindowChromeWindow, IRecipient<CloseMainWindowMessage>
 {
-    #region Fields/Properties
-
-    private readonly IGuiCommands _guiCommands;
-
-    #endregion
     
     public MainWindow(
         MainWindowViewModel mainWindowViewModel,
         MenuStripManager menuStripManager,
-        IGuiCommands guiCommands,
         IMessenger messenger,
-        HotkeyManager hotkeyManager,
+        IHotkeyManager hotkeyManager,
         IWritableOptions<LayoutSettings> layoutSettings
         )
     {
         DataContext = mainWindowViewModel;
-        _guiCommands = guiCommands;
         
         messenger.RegisterAll(this);
         
         InitializeComponent();
-        this.WinformsMenuHost.Child = menuStripManager.CreateMenuStrip();
+        menuStripManager.PopulateMenu(this.MainMenu);
 
         this.PreviewKeyDown += (_,e) => hotkeyManager.PreviewKeyDownAppWide(e);
+        this.PreviewMouseDown += OnPreviewMouseDown;
         this.Loaded += (_, _) =>
         {
             mainWindowViewModel.LoadWindowSettings(layoutSettings.CurrentValue.MainWindow);
         };
+    }
+
+    private void OnPreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        // When a WinForms control (e.g. the editor) has focus, WPF reports
+        // Keyboard.FocusedElement as null. If the user clicks on a WPF element
+        // that is not inside a WindowsFormsHost, pull focus back to WPF so that
+        // app-wide hotkeys (like zoom) work again.
+        if (Keyboard.FocusedElement is not null)
+            return;
+
+        if (e.OriginalSource is not DependencyObject source || IsDescendantOfWindowsFormsHost(source))
+            return;
+
+        if (source is IInputElement { Focusable: true } inputElement)
+        {
+            Keyboard.Focus(inputElement);
+        }
+        else
+        {
+            Keyboard.Focus(this);
+        }
+    }
+
+    private static bool IsDescendantOfWindowsFormsHost(DependencyObject element)
+    {
+        var current = element;
+        while (current != null)
+        {
+            if (current is System.Windows.Forms.Integration.WindowsFormsHost)
+                return true;
+            current = VisualTreeHelper.GetParent(current);
+        }
+        return false;
     }
 
     void IRecipient<CloseMainWindowMessage>.Receive(CloseMainWindowMessage message)
@@ -65,17 +94,17 @@ public partial class MainWindow : WindowChromeWindow, IRecipient<CloseMainWindow
         Close();
     }
 
-    private void OnMinimizeButtonClick(object sender, RoutedEventArgs e)
+    private void OnMinimizeButtonClick(object? sender, System.Windows.RoutedEventArgs e)
     {
         this.WindowState = WindowState.Minimized;
     }
 
-    private void OnMaximizeButtonClick(object sender, RoutedEventArgs e)
+    private void OnMaximizeButtonClick(object? sender, System.Windows.RoutedEventArgs e)
     {
         this.WindowState = this.WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
     }
 
-    private void OnCloseButtonClick(object sender, RoutedEventArgs e)
+    private void OnCloseButtonClick(object? sender, System.Windows.RoutedEventArgs e)
     {
         Locator.GetRequiredService<IMessenger>().Send(new CloseMainWindowMessage());
     }

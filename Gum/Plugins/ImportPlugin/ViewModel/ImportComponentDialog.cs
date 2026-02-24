@@ -1,5 +1,7 @@
 ﻿using Gum.Commands;
+using Gum.Managers;
 using Gum.Plugins.ImportPlugin.Manager;
+using Gum.Services;
 using Gum.Services.Dialogs;
 using Gum.ToolStates;
 using System.Collections.Generic;
@@ -15,7 +17,9 @@ public class ImportComponentDialog : ImportBaseDialogViewModel
     private readonly IFileCommands _fileCommands;
     private readonly IGuiCommands _guiCommands;
     private readonly ISelectedState _selectedState;
-    private readonly ImportLogic _importLogic;
+    private readonly IImportLogic _importLogic;
+    private readonly IProjectManager _projectManager;
+    private readonly IProjectState _projectState;
 
     public override string Title => "Import Component";
     public override string BrowseFileFilter => "Gum Component (*.gucx)|*.gucx";
@@ -25,22 +29,25 @@ public class ImportComponentDialog : ImportBaseDialogViewModel
         IGuiCommands guiCommands,
         ISelectedState selectedState,
         IDialogService dialogService,
-        ImportLogic importLogic) 
+        IImportLogic importLogic,
+        IProjectState projectState)
         : base(dialogService)
     {
         _fileCommands = fileCommands;
         _guiCommands = guiCommands;
         _selectedState = selectedState;
         _importLogic = importLogic;
+        _projectManager = Locator.GetRequiredService<IProjectManager>();
+        _projectState = projectState;
 
         List<FilePath> componentFilesNotInProject = FileManager.GetAllFilesInDirectory(
-            GumState.Self.ProjectState.ComponentFilePath.FullPath, "gucx")
+            _projectState.ComponentFilePath.FullPath, "gucx")
             .Select(item => new FilePath(item))
             .ToList();
 
-        FilePath[] componentFilesInProject = GumState.Self.ProjectState.GumProjectSave
+        FilePath[] componentFilesInProject = _projectState.GumProjectSave
             .Components
-            .Select(item => new FilePath(GumState.Self.ProjectState.ComponentFilePath + item.Name + ".gucx"))
+            .Select(item => new FilePath(_projectState.ComponentFilePath + item.Name + ".gucx"))
             .ToArray();
 
         componentFilesNotInProject = componentFilesNotInProject
@@ -50,12 +57,12 @@ public class ImportComponentDialog : ImportBaseDialogViewModel
         UnfilteredFiles.AddRange(componentFilesNotInProject.Select(item => item.FullPath));
     }
 
-    protected override void OnAffirmative()
+    public override void OnAffirmative()
     {
         ComponentSave lastImportedComponent = null;
 
         string desiredDirectory = FileManager.GetDirectory(
-            ProjectManager.Self.GumProjectSave.FullFileName) + "Components/";
+            _projectManager.GumProjectSave.FullFileName) + "Components/";
         foreach (var file in SelectedFiles)
         {
             lastImportedComponent = _importLogic.ImportComponent(file, desiredDirectory,

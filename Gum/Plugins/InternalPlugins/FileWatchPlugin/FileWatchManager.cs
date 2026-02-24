@@ -1,5 +1,6 @@
 ﻿using Gum.Commands;
 using Gum.Managers;
+using Gum.Services;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -8,7 +9,22 @@ using ToolsUtilities;
 
 namespace Gum.Logic.FileWatch;
 
-public class FileWatchManager
+public interface IFileWatchManager
+{
+    IReadOnlyDictionary<FilePath, DateTime> TimedChangesToIgnore { get; }
+    HashSet<FilePath> ChangedFilesWaitingForFlush { get; }
+    bool Enabled { get; }
+    IEnumerable<FilePath> CurrentFilePathsWatching { get; }
+    TimeSpan TimeToNextFlush { get; }
+
+    void EnableWithDirectories(HashSet<FilePath> directories);
+    void Disable();
+    void IgnoreNextChangeUntil(FilePath filePath, DateTime? time = null);
+    void ClearIgnoredFiles();
+    void Flush();
+}
+
+public class FileWatchManager : IFileWatchManager
 {
     #region Fields/Properties
 
@@ -56,7 +72,7 @@ public class FileWatchManager
 
     public void EnableWithDirectories(HashSet<FilePath> directories)
     {
-        var gumProject = ProjectManager.Self.GumProjectSave;
+        var gumProject = Locator.GetRequiredService<IProjectManager>().GumProjectSave;
         if(gumProject == null)
         {
             return;
@@ -121,7 +137,7 @@ public class FileWatchManager
         fileSystemWatchers.Clear();
     }
 
-    private void HandleRename(object sender, RenamedEventArgs e)
+    private void HandleRename(object? sender, RenamedEventArgs e)
     {
         var fileName = new FilePath(e.FullPath);
         // for now only do texture files like PNG:
@@ -134,12 +150,12 @@ public class FileWatchManager
         }
     }
 
-    private void HandleFileSystemDelete(object sender, FileSystemEventArgs e)
+    private void HandleFileSystemDelete(object? sender, FileSystemEventArgs e)
     {
         // do anything?
     }
 
-    private void HandleFileSystemChange(object sender, FileSystemEventArgs e)
+    private void HandleFileSystemChange(object? sender, FileSystemEventArgs e)
     {
         var fileName = new FilePath(e.FullPath);
         var extension = fileName.Extension;

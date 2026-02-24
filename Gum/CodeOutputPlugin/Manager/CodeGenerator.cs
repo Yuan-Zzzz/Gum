@@ -3,10 +3,13 @@ using Gum.Converters;
 using Gum.DataTypes;
 using Gum.DataTypes.Behaviors;
 using Gum.DataTypes.Variables;
+using Gum.Localization;
 using Gum.Managers;
 using Gum.Reflection;
+using Gum.StateAnimation.SaveClasses;
 using RenderingLibrary.Graphics;
 using RenderingLibrary.Math;
+using SharpDX.DirectWrite;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -63,34 +66,6 @@ public class CodeGenerationContext
         }
     }
 
-    private void RefreshIsInstanceFormsObject()
-    {
-        if (_instance == null || CodeOutputProjectSettings?.OutputLibrary != OutputLibrary.MonoGameForms)
-        {
-            _isInstanceFormsObject = false;
-        }
-        else
-        {
-            _isInstanceFormsObject = false;
-            var instanceElement = ObjectFinder.Self.GetElementSave(_instance);
-            if (instanceElement != null)
-            {
-                if (this.CodeOutputProjectSettings.OutputLibrary == OutputLibrary.MonoGameForms)
-                {
-                    // everything is a form if it's not a standard:
-                    var isStandard = instanceElement is StandardElementSave;
-                    _isInstanceFormsObject = !isStandard;
-                }
-                else
-                {
-                    CodeGenerator.GetGumFormsTypeFromBehaviors(instanceElement, out string? formsType, out _);
-
-                    _isInstanceFormsObject = !string.IsNullOrEmpty(formsType);
-                }
-            }
-        }
-    }
-
     public ElementSave Element { get; set; }
     public StringBuilder StringBuilder { get; set; } = new StringBuilder();
 
@@ -108,7 +83,7 @@ public class CodeGenerationContext
         }
     }
 
-    public CodeOutputElementSettings ElementSettings { get; set; }
+    public CodeOutputElementSettings ElementSettings { get; set; } = new();
 
     public string GumVariablePrefix
     {
@@ -194,6 +169,34 @@ public class CodeGenerationContext
     int _tabs;
     private readonly CodeGenerationNameVerifier _nameVerifier;
 
+    private void RefreshIsInstanceFormsObject()
+    {
+        if (_instance == null || CodeOutputProjectSettings?.OutputLibrary != OutputLibrary.MonoGameForms)
+        {
+            _isInstanceFormsObject = false;
+        }
+        else
+        {
+            _isInstanceFormsObject = false;
+            var instanceElement = ObjectFinder.Self.GetElementSave(_instance);
+            if (instanceElement != null)
+            {
+                if (this.CodeOutputProjectSettings.OutputLibrary == OutputLibrary.MonoGameForms)
+                {
+                    // everything is a form if it's not a standard:
+                    var isStandard = instanceElement is StandardElementSave;
+                    _isInstanceFormsObject = !isStandard;
+                }
+                else
+                {
+                    CodeGenerator.GetGumFormsTypeFromBehaviors(instanceElement, out string? formsType, out _);
+
+                    _isInstanceFormsObject = !string.IsNullOrEmpty(formsType);
+                }
+            }
+        }
+    }
+
     public int TabCount
     {
         get => _tabs;
@@ -250,11 +253,11 @@ public class CodeGenerator
     #region CodeGenerator Fields/Properties
 
     private readonly CodeGenerationNameVerifier _codeGenerationNameVerifier;
+    private readonly LocalizationService _localizationService;
 
     public static int CanvasWidth { get; set; } = 480;
     public static int CanvasHeight { get; set; } = 854;
 
-    public LocalizationManager LocalizationManager { get; set; }
 
     /// <summary>
     /// if true, then pixel sizes are maintained regardless of pixel density. This allows layouts to maintain pixel-perfect.
@@ -265,9 +268,10 @@ public class CodeGenerator
 
     #endregion
     
-    public CodeGenerator(CodeGenerationNameVerifier codeGenerationNameVerifier)
+    public CodeGenerator(CodeGenerationNameVerifier codeGenerationNameVerifier, LocalizationService localizationService)
     {
         _codeGenerationNameVerifier = codeGenerationNameVerifier;
+        _localizationService = localizationService;
     }
 
     #region Using Statements
@@ -311,11 +315,12 @@ public class CodeGenerator
             }
         }
 
-        foreach (var neededUsing in neededUsings)
+        // Add using statements for AnimationRuntime and GetAnimation extension method if element has animations
+        if (GetElementAnimationsSave(context.Element) != null)
         {
-            context.StringBuilder.AppendLine($"using {neededUsing};");
+            neededUsings.Add("Gum.StateAnimation.Runtime");
+            neededUsings.Add("Gum.Wireframe");
         }
-
 
         // The regex's here fix this bug:
         // https://github.com/vchelaru/Gum/issues/242
@@ -325,7 +330,9 @@ public class CodeGenerator
 
             string result = Regex.Replace(originalString, @"(?<!\r)\n", "\r\n");
 
-            context.StringBuilder.AppendLine(result);
+            var splitUsings = result.Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
+
+            AddUsings(splitUsings);
         }
 
         if (!string.IsNullOrEmpty(context.ElementSettings?.UsingStatements))
@@ -333,7 +340,33 @@ public class CodeGenerator
             string originalString = context.ElementSettings!.UsingStatements;
             string result = Regex.Replace(originalString, @"(?<!\r)\n", "\r\n");
 
-            context.StringBuilder.AppendLine(result);
+            var splitUsings = result.Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
+
+            AddUsings(splitUsings);
+        }
+
+        void AddUsings(string[] splitUsings)
+        {
+            foreach (var item in splitUsings)
+            {
+                var itemCopy = item;
+                if (itemCopy.StartsWith("using "))
+                {
+                    itemCopy = item.Substring("using ".Length);
+                }
+
+                if (itemCopy.EndsWith(";"))
+                {
+                    itemCopy = itemCopy.Substring(0, itemCopy.Length - 1);
+                }
+                neededUsings.Add(itemCopy);
+            }
+        }
+
+
+        foreach (var neededUsing in neededUsings.OrderBy(item => item))
+        {
+            context.StringBuilder.AppendLine($"using {neededUsing};");
         }
     }
 
@@ -341,18 +374,23 @@ public class CodeGenerator
 
     #region Namespace
 
-    public string GetElementNamespace(ElementSave element, CodeOutputElementSettings elementSettings, CodeOutputProjectSettings projectSettings)
+    public string GetElementNamespace(ElementSave element, CodeOutputElementSettings? elementSettings, CodeOutputProjectSettings projectSettings)
     {
+        return GetElementNamespace(element.Name, element.GetType(), elementSettings, projectSettings);
+    }
+
+    public string GetElementNamespace(string elementName, Type elementType, CodeOutputElementSettings? elementSettings, CodeOutputProjectSettings projectSettings)
+    { 
         var namespaceName = elementSettings?.Namespace ?? string.Empty;
 
         if (string.IsNullOrEmpty(namespaceName) && !string.IsNullOrWhiteSpace(projectSettings.RootNamespace))
         {
             namespaceName = projectSettings.RootNamespace;
-            if (element is ScreenSave)
+            if (elementType == typeof(ScreenSave))
             {
                 namespaceName += ".Screens";
             }
-            else if (element is ComponentSave)
+            else if (elementType == typeof(ComponentSave))
             {
                 namespaceName += ".Components";
             }
@@ -363,7 +401,7 @@ public class CodeGenerator
 
             if(projectSettings.AppendFolderToNamespace)
             {
-                var splitElementName = element.Name.Replace("\\", "/").Split('/').ToArray();
+                var splitElementName = elementName.Replace("\\", "/").Split('/').ToArray();
                 var splitPrefix = splitElementName.Take(splitElementName.Length - 1).ToArray();
                 var whatToAppend = string.Join(".", splitPrefix);
                 if (!string.IsNullOrEmpty(whatToAppend))
@@ -412,8 +450,13 @@ public class CodeGenerator
     
     public string? GetClassNameForType(IStateContainer container, VisualApi visualApi, CodeGenerationContext context, bool isFullyQualified = false) =>
         GetClassNameForType(container, visualApi, context, out _, isFullyQualified);
-    
+
     public string? GetClassNameForType(IStateContainer container, VisualApi visualApi, CodeGenerationContext context, out bool isPrefixed, bool isFullyQualified = false)
+    {
+        return GetClassNameForType(container.Name, container.GetType(), visualApi, context, out isPrefixed, isFullyQualified);
+    }
+
+    public string? GetClassNameForType(string gumName, Type elementType, VisualApi visualApi, CodeGenerationContext context, out bool isPrefixed, bool isFullyQualified = false)
     {
         isPrefixed = false;
         
@@ -422,7 +465,7 @@ public class CodeGenerator
 
         if (visualApi == VisualApi.XamarinForms)
         {
-            switch (container.Name)
+            switch (gumName)
             {
                 case "Text":
                     className = "Label";
@@ -434,9 +477,9 @@ public class CodeGenerator
         if (context.CodeOutputProjectSettings.OutputLibrary == OutputLibrary.MonoGameForms)
         {
             // see if it's a forms object:
-            if (container is ScreenSave or ComponentSave)
+            if (elementType == typeof(ScreenSave) || elementType == typeof(ComponentSave))
             {
-                var strippedType = container.Name;
+                var strippedType = gumName;
                 if (strippedType.Contains("/"))
                 {
                     strippedType = strippedType.Substring(strippedType.LastIndexOf("/") + 1);
@@ -454,7 +497,7 @@ public class CodeGenerator
         if (!specialHandledCase)
         {
 
-            var strippedType = container.Name;
+            var strippedType = gumName;
             if (strippedType.Contains("/"))
             {
                 strippedType = strippedType.Substring(strippedType.LastIndexOf("/") + 1);
@@ -470,9 +513,9 @@ public class CodeGenerator
 
         className = className == null ? string.Empty : _codeGenerationNameVerifier.ToCSharpName(className);
 
-        if(isFullyQualified && container is ElementSave elementSave)
+        if(isFullyQualified && typeof(ElementSave).IsAssignableFrom(elementType))
         {
-            var prefixNamespace = GetElementNamespace(elementSave, context.ElementSettings, context.CodeOutputProjectSettings);
+            var prefixNamespace = GetElementNamespace(gumName, elementType, context.ElementSettings, context.CodeOutputProjectSettings);
             // If we don't have a namespace specified for the project, this can be empty
             if(!string.IsNullOrWhiteSpace(prefixNamespace))
             {
@@ -565,7 +608,7 @@ public class CodeGenerator
         else
         {
             inheritance = element.BaseType;
-            if (inheritance.Contains("/") == true)
+            if (inheritance?.Contains("/") == true)
             {
                 inheritance = inheritance.Substring(inheritance.LastIndexOf('/') + 1);
             }
@@ -1128,6 +1171,9 @@ public class CodeGenerator
             context.StringBuilder.AppendLine(context.Tabs + "base.RefreshInternalVisualReferences();");
 
         }
+
+        // Initialize animation fields
+        GenerateAnimationFieldInitializations(context);
 
         if (!isFullyInstantiatingInCode)
         {
@@ -3183,6 +3229,12 @@ public class CodeGenerator
 
         #endregion
 
+        #region Animation Fields
+
+        GenerateAnimationProperties(context);
+
+        #endregion
+
         if (projectSettings.GenerateGumDataTypes)
         {
             GenerateGumSaveObjects(context, stringBuilder);
@@ -3226,6 +3278,26 @@ public class CodeGenerator
         #endregion
 
         return stringBuilder.ToString();
+    }
+
+    public string GetCodeForInstance(InstanceSave instance, ElementSave element, CodeOutputProjectSettings codeOutputProjectSettings)
+    {
+
+        var context = new CodeGenerationContext(_codeGenerationNameVerifier, element);
+        context.Instance = instance;
+        context.CodeOutputProjectSettings = codeOutputProjectSettings;
+        var stringBuilder = context.StringBuilder;
+
+        FillWithInstanceDeclaration(context);
+
+        FillWithInstanceInstantiation(context);
+
+        FillWithNonParentVariableAssignments(context);
+
+        FillWithParentAssignments(context);
+
+        var code = stringBuilder.ToString();
+        return code;
     }
 
 
@@ -3279,6 +3351,98 @@ public class CodeGenerator
 
         tabCount--;
         stringBuilder.AppendLine(ToTabs(tabCount) + "}");
+    }
+
+    #endregion
+
+    #region Animation Fields
+
+    /// <summary>
+    /// Gets the ElementAnimationsSave for the specified element, if it exists.
+    /// </summary>
+    private ElementAnimationsSave? GetElementAnimationsSave(ElementSave element)
+    {
+        if (element == null)
+        {
+            return null;
+        }
+
+        var fullPathXmlForElement = element.GetFullPathXmlFile();
+        if (fullPathXmlForElement == null)
+        {
+            return null;
+        }
+
+        FilePath animationFileName = fullPathXmlForElement.RemoveExtension().FullPath + "Animations.ganx";
+        
+        if (!animationFileName.Exists())
+        {
+            return null;
+        }
+
+        try
+        {
+            return FileManager.XmlDeserialize<ElementAnimationsSave>(animationFileName.FullPath);
+        }
+        catch
+        {
+            // If deserialization fails, return null
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Generates AnimationRuntime properties for all animations defined for the element.
+    /// </summary>
+    private void GenerateAnimationProperties(CodeGenerationContext context)
+    {
+        var elementAnimations = GetElementAnimationsSave(context.Element);
+        
+        if (elementAnimations == null || elementAnimations.Animations == null || elementAnimations.Animations.Count == 0)
+        {
+            return;
+        }
+
+        context.StringBuilder.AppendLine();
+        context.StringBuilder.AppendLine(context.Tabs + "#region Animation Fields");
+
+        foreach (var animation in elementAnimations.Animations)
+        {
+            if (string.IsNullOrEmpty(animation.Name))
+            {
+                continue;
+            }
+
+            var fieldName = _codeGenerationNameVerifier.ToCSharpName(animation.Name);
+            context.StringBuilder.AppendLine(context.Tabs + $"public AnimationRuntime {fieldName} {{get; protected set;}}");
+        }
+
+        context.StringBuilder.AppendLine(context.Tabs + "#endregion");
+    }
+
+    /// <summary>
+    /// Generates initialization code for AnimationRuntime fields.
+    /// </summary>
+    private void GenerateAnimationFieldInitializations(CodeGenerationContext context)
+    {
+        var elementAnimations = GetElementAnimationsSave(context.Element);
+        
+        if (elementAnimations == null || elementAnimations.Animations == null || elementAnimations.Animations.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var animation in elementAnimations.Animations)
+        {
+            if (string.IsNullOrEmpty(animation.Name))
+            {
+                continue;
+            }
+
+            var fieldName = _codeGenerationNameVerifier.ToCSharpName(animation.Name);
+            var animationName = animation.Name;
+            context.StringBuilder.AppendLine(context.Tabs + $"{fieldName} = this.Visual.GetAnimation(\"{animationName}\");");
+        }
     }
 
     #endregion
@@ -3740,26 +3904,6 @@ public class CodeGenerator
     }
 
     #endregion
-
-    public string GetCodeForInstance(InstanceSave instance, ElementSave element, CodeOutputProjectSettings codeOutputProjectSettings)
-    {
-
-        var context = new CodeGenerationContext(_codeGenerationNameVerifier, element);
-        context.Instance = instance;
-        context.CodeOutputProjectSettings = codeOutputProjectSettings;
-        var stringBuilder = context.StringBuilder;
-
-        FillWithInstanceDeclaration(context);
-
-        FillWithInstanceInstantiation(context);
-
-        FillWithNonParentVariableAssignments(context);
-
-        FillWithParentAssignments(context);
-
-        var code = stringBuilder.ToString();
-        return code;
-    }
 
     #region Variable Assignments
 
@@ -4501,7 +4645,7 @@ public class CodeGenerator
 
         #endregion
 
-        else if (GetIsShouldBeLocalized(variable, context.Element.DefaultState, LocalizationManager))
+        else if (GetIsShouldBeLocalized(variable, context.Element.DefaultState, _localizationService))
         {
             string assignment = GetLocalizedLine(variable, context);
 
@@ -4720,9 +4864,6 @@ public class CodeGenerator
         }
     }
 
-
-    #endregion
-
     private static void ProcessColorForLabel(List<VariableSave> variablesToConsider, StateSave defaultState, StringBuilder stringBuilder, CodeGenerationContext context)
     {
         var rfv = new RecursiveVariableFinder(defaultState);
@@ -4750,6 +4891,9 @@ public class CodeGenerator
             stringBuilder.AppendLine($"{context.CodePrefix}.TextColor = Color.FromRgba({red}, {green}, {blue}, {alpha});");
         }
     }
+
+
+    #endregion
 
     private static bool GetIfStateSetsAnyPositionValues(StateSave state, string prefix, List<VariableSave> variablesToConsider)
     {
@@ -4847,7 +4991,7 @@ public class CodeGenerator
                 return $"{context.CodePrefixNoTabs}.SetProperty(\"{variable.GetRootName()}\", \"{variable.Value}\");";
             }
         }
-        else if (GetIsShouldBeLocalized(variable, context.Element.DefaultState, LocalizationManager))
+        else if (GetIsShouldBeLocalized(variable, context.Element.DefaultState, _localizationService))
         {
             string assignment = GetLocalizedLine(variable, context);
 
@@ -4945,9 +5089,9 @@ public class CodeGenerator
         return assignment;
     }
 
-    private static bool GetIsShouldBeLocalized(VariableSave variable, StateSave defaultState, LocalizationManager localizationManager)
+    private static bool GetIsShouldBeLocalized(VariableSave variable, StateSave defaultState, LocalizationService localizationService)
     {
-        var toReturn = localizationManager.HasDatabase &&
+        var toReturn = localizationService.HasDatabase &&
             // This could be exposed of exposed, so the name wouldn't be "Text"
             //variable.GetRootName() == "Text" && 
             variable.Value is string valueAsString &&
@@ -4958,7 +5102,7 @@ public class CodeGenerator
         return toReturn;
     }
     public static string StringIdPrefix = "T_";
-    public static string FormattedLocalizationCode = "Strings.Get(\"{0}\")";
+    public static string FormattedLocalizationCode = "GumService.Default.LocalizationService.Translate(\"{0}\")";
 
     private void TryGenerateApplyLocalizationForInstance(CodeGenerationContext context, StringBuilder stringBuilder)
     {
@@ -4983,7 +5127,7 @@ public class CodeGenerator
 
     private void GenerateApplyLocalizationMethod(ElementSave element, int tabCount, StringBuilder stringBuilder)
     {
-        if (LocalizationManager.HasDatabase)
+        if (_localizationService.HasDatabase)
         {
             // Vic says - we may want this to be recursive eventually, but that introduces
             // some complexity. How do we know which views have a call available? 
@@ -5004,7 +5148,7 @@ public class CodeGenerator
                 context.Instance = instance;
                 if (instance != null)
                 {
-                    if (GetIsShouldBeLocalized(variable, context.Element.DefaultState, LocalizationManager))
+                    if (GetIsShouldBeLocalized(variable, context.Element.DefaultState, _localizationService))
                     {
                         string assignment = GetLocalizedLine(variable, context);
                         stringBuilder.AppendLine(ToTabs(tabCount) + assignment);
@@ -5135,7 +5279,7 @@ public class CodeGenerator
             }
 
             var baseHasMain = baseElement != null &&
-                projectSettings.BaseTypesNotCodeGenerated?.Contains(element.BaseType) != true &&
+                projectSettings.BaseTypesNotCodeGenerated?.Contains(element.BaseType!) != true &&
                 GetIfShouldAddMainLayout(baseElement, projectSettings);
             if (!baseHasMain)
             {

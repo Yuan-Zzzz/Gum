@@ -4,6 +4,7 @@ using Gum.Commands;
 using Gum.DataTypes;
 using Gum.Managers;
 using Gum.Plugins;
+using Gum.Plugins.InternalPlugins.VariableGrid;
 using Gum.PropertyGridHelpers;
 using Gum.Services;
 using Gum.ToolStates;
@@ -13,13 +14,16 @@ using InputLibrary;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using RenderingLibrary;
+using RenderingLibrary.Graphics;
 using RenderingLibrary.Math;
 using RenderingLibrary.Math.Geometry;
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using TextureCoordinateSelectionPlugin.ViewModels;
+using TextureCoordinateSelectionPlugin.Models;
 using TextureCoordinateSelectionPlugin.Views;
 using Color = System.Drawing.Color;
 
@@ -35,28 +39,27 @@ public enum RefreshType
 
 #endregion
 
-public class ControlLogic
+public class TextureCoordinateDisplayController : IDisposable
 {
     private readonly ISelectedState _selectedState;
     private readonly IUndoManager _undoManager;
     private readonly IGuiCommands _guiCommands;
     private readonly IFileCommands _fileCommands;
-    private readonly SetVariableLogic _setVariableLogic;
+    private readonly ISetVariableLogic _setVariableLogic;
     private readonly ITabManager _tabManager;
-    private readonly HotkeyManager _hotkeyManager;
+    private readonly IHotkeyManager _hotkeyManager;
     private readonly ScrollBarLogicWpf _scrollBarLogic;
+    private readonly BackgroundManager _backgroundManager;
+    private readonly LineGridManager _lineGridManager;
+    private readonly NineSliceGuideManager _nineSliceGuideManager;
+    private readonly TextureOutlineManager _textureOutlineManager;
 
-    LineRectangle textureOutlineRectangle = null;
+    bool _isSnapToGridEnabled;
+    int _snapToGridSize;
 
-    MainControlViewModel ViewModel;
+    internal event Action<int>? ZoomLevelChanged;
 
-    // [0] - left vertical line
-    // [1] - right vertical line
-    // [2] - top horizontal line
-    // [3] - bottom horizontal line
-    Line[] nineSliceGuideLines = new Line[4];
-
-    LineGrid lineGrid;
+    ExposedTextureCoordinateSet? _currentExposedSource;
 
     object oldTextureLeftValue;
     object oldTextureTopValue;
@@ -79,15 +82,14 @@ public class ControlLogic
         set => mainControl.InnerControl.CurrentTexture = value;
     }
 
-    public ControlLogic(ISelectedState selectedState,
+    public TextureCoordinateDisplayController(ISelectedState selectedState,
         IUndoManager undoManager,
         IGuiCommands guiCommands,
         IFileCommands fileCommands,
-        SetVariableLogic setVariableLogic,
+        ISetVariableLogic setVariableLogic,
         ITabManager tabManager,
-        HotkeyManager hotkeyManager,
-        ScrollBarLogicWpf scrollBarLogic,
-        MainControlViewModel mainControlViewModel)
+        IHotkeyManager hotkeyManager,
+        ScrollBarLogicWpf scrollBarLogic)
     {
         _selectedState = selectedState;
         _undoManager = undoManager;
@@ -98,10 +100,13 @@ public class ControlLogic
         _hotkeyManager = hotkeyManager;
         _scrollBarLogic = scrollBarLogic;
 
-        ViewModel = mainControlViewModel;
+        _backgroundManager = new BackgroundManager();
+        _lineGridManager = new LineGridManager();
+        _nineSliceGuideManager = new NineSliceGuideManager();
+        _textureOutlineManager = new TextureOutlineManager();
     }
 
-    public PluginTab CreateControl()
+    public PluginTab CreateControl(object dataContext, out IList<int> availableZoomLevels)
     {
         mainControl = new MainControl();
         //var control = new ImageRegionSelectionControl();
@@ -132,17 +137,16 @@ public class ControlLogic
         //_guiCommands.AddWinformsControl(control, "Texture Coordinates", TabLocation.Right);
 
         var pluginTab = _tabManager.AddControl(mainControl, "Texture Coordinates", TabLocation.RightBottom);
-        innerControl.DoubleClick += (not, used) =>
-            HandleRegionDoubleClicked(innerControl, ref textureOutlineRectangle);
+        innerControl.DoubleClick += (_, _) =>
+            HandleRegionDoubleClicked(innerControl);
 
-        ViewModel.AvailableZoomLevels = innerControl.AvailableZoomLevels;
-        mainControl.DataContext = ViewModel;
+        availableZoomLevels = innerControl.AvailableZoomLevels;
+        mainControl.DataContext = dataContext;
 
-        ViewModel.PropertyChanged += HandleViewModelPropertyChanged;
-
-        CreateLineRectangle();
-
-        CreateNineSliceLines();
+        _backgroundManager.Initialize(SystemManagers);
+        _lineGridManager.Initialize(SystemManagers);
+        _nineSliceGuideManager.Initialize(SystemManagers);
+        _textureOutlineManager.Initialize(SystemManagers);
 
         RefreshLineGrid();
 
@@ -163,7 +167,7 @@ public class ControlLogic
         mainControl.InnerControl.MouseWheelZoom += (_, _) =>
         {
             UpdateScrollBarsToTexture();
-            ViewModel.SelectedZoomLevel = mainControl.InnerControl.ZoomValue;
+            ZoomLevelChanged?.Invoke(mainControl.InnerControl.ZoomValue);
         };
 
         mainControl.InnerControl.Panning += () =>
@@ -172,7 +176,7 @@ public class ControlLogic
         };
     }
 
-    private void HandleKeyDown(object sender, KeyEventArgs e)
+    private void HandleKeyDown(object? sender, KeyEventArgs e)
     {
         var camera = mainControl.InnerControl.SystemManagers.Renderer.Camera;
         if (_hotkeyManager.MoveCameraRight.IsPressed(e))
@@ -212,205 +216,165 @@ public class ControlLogic
         _scrollBarLogic.UpdateScrollBarsToCamera(width, height);
     }
 
-    private void CreateNineSliceLines()
+    internal void SetCurrentExposedSource(ExposedTextureCoordinateSet? source)
     {
-        for (int i = 0; i < 4; i++)
-        {
-            nineSliceGuideLines[i] = new Line(mainControl.InnerControl.SystemManagers);
-            nineSliceGuideLines[i].Visible = false;
-            nineSliceGuideLines[i].Z = 1;
-            nineSliceGuideLines[i].Color = Color.White;
-            nineSliceGuideLines[i].IsDotted = true;
-
-            var alpha = (int)(0.6f * 0xFF);
-
-            nineSliceGuideLines[i].Color =
-                Color.FromArgb(alpha, alpha, alpha, alpha);
-
-            mainControl.InnerControl.SystemManagers.Renderer.MainLayer.Add(nineSliceGuideLines[i]);
-        }
+        _currentExposedSource = source;
     }
 
-    private void CreateLineRectangle()
+    internal void UpdateZoom(int zoomLevel)
     {
-        lineGrid = new LineGrid(mainControl.InnerControl.SystemManagers);
-        lineGrid.ColumnWidth = 16;
-        lineGrid.ColumnCount = 16;
-
-        lineGrid.RowWidth = 16;
-        lineGrid.RowCount = 16;
-
-        lineGrid.Visible = true;
-        lineGrid.Z = 1;
-
-        var alpha = (int)(.2f * 0xFF);
-
-        // premultiplied
-        lineGrid.Color = Color.FromArgb(alpha, alpha, alpha, alpha);
-
-        mainControl.InnerControl.SystemManagers.Renderer.MainLayer.Add(lineGrid);
+        mainControl.InnerControl.ZoomValue = zoomLevel;
+        UpdateScrollBarsToTexture();
     }
 
-    private void HandleViewModelPropertyChanged(object sender, PropertyChangedEventArgs e)
+    internal void UpdateSnapGrid(bool isEnabled, int gridSize)
     {
-        void RefreshSnappingGridSize()
-        {
-            if (!ViewModel.IsSnapToGridChecked)
-            {
-                mainControl.InnerControl.SnappingGridSize = null;
-            }
-            else
-            {
-                mainControl.InnerControl.SnappingGridSize = ViewModel.SelectedSnapToGridValue;
-            }
-        }
+        _isSnapToGridEnabled = isEnabled;
+        _snapToGridSize = gridSize;
 
-        switch (e.PropertyName)
+        if (!_isSnapToGridEnabled)
         {
-            case nameof(MainControlViewModel.IsSnapToGridChecked):
-                RefreshSnappingGridSize();
-                RefreshLineGrid();
-
-                break;
-            case nameof(MainControlViewModel.SelectedSnapToGridValue):
-                RefreshSnappingGridSize();
-                RefreshLineGrid();
-                break;
-            case nameof(MainControlViewModel.SelectedZoomLevel):
-                mainControl.InnerControl.ZoomValue = ViewModel.SelectedZoomLevel;
-                UpdateScrollBarsToTexture();
-                break;
+            mainControl.InnerControl.SnappingGridSize = null;
         }
+        else
+        {
+            mainControl.InnerControl.SnappingGridSize = _snapToGridSize;
+        }
+        RefreshLineGrid();
     }
 
-    bool showNineSliceGuides;
-    float? customFrameTextureCoordinateWidth;
-    internal void Refresh(Texture2D textureToAssign, bool showNineSliceGuides, float? customFrameTextureCoordinateWidth)
+    private GraphicalUiElement? FindExposedSourceChild(GraphicalUiElement parent)
     {
-        this.showNineSliceGuides = showNineSliceGuides;
-        this.customFrameTextureCoordinateWidth = customFrameTextureCoordinateWidth;
+        if (_currentExposedSource?.SourceObjectName == null) return null;
+        return parent.Children
+            .FirstOrDefault(c => c.Name == _currentExposedSource.SourceObjectName) as GraphicalUiElement;
+    }
+
+    internal void Refresh()
+    {
+        var textureToAssign = GetTextureToAssign(out bool showNineSliceGuides, out float? customFrameTextureCoordinateWidth);
+
+        if (textureToAssign?.IsDisposed == true)
+        {
+            textureToAssign = null;
+        }
+
         mainControl.InnerControl.CurrentTexture = textureToAssign;
+
+        if (_currentExposedSource != null)
+        {
+            mainControl.InnerControl.CanChangeX = _currentExposedSource.ExposedLeftName != null;
+            mainControl.InnerControl.CanChangeY = _currentExposedSource.ExposedTopName != null;
+            mainControl.InnerControl.CanChangeWidth = _currentExposedSource.ExposedWidthName != null;
+            mainControl.InnerControl.CanChangeHeight = _currentExposedSource.ExposedHeightName != null;
+        }
+        else
+        {
+            mainControl.InnerControl.CanChangeX = true;
+            mainControl.InnerControl.CanChangeY = true;
+            mainControl.InnerControl.CanChangeWidth = true;
+            mainControl.InnerControl.CanChangeHeight = true;
+        }
 
         RefreshSelector(Logic.RefreshType.OnlyIfGrabbed);
 
-        RefreshOutline(mainControl.InnerControl, ref textureOutlineRectangle);
+        _textureOutlineManager.CurrentTexture = textureToAssign;
+        _textureOutlineManager.Refresh();
 
         RefreshLineGrid();
 
-        RefreshNineSliceGuides();
+        _nineSliceGuideManager.ShowGuides = showNineSliceGuides;
+        _nineSliceGuideManager.CurrentTexture = textureToAssign;
+        _nineSliceGuideManager.Selector = mainControl.InnerControl.RectangleSelector;
+        _nineSliceGuideManager.CustomFrameWidth = customFrameTextureCoordinateWidth;
+        _nineSliceGuideManager.Refresh();
     }
 
-    private void RefreshNineSliceGuides()
+    private Texture2D? GetTextureToAssign(out bool isNineslice, out float? customFrameTextureCoordinateWidth)
     {
-        for (int i = 0; i < 4; i++)
+        var graphicalUiElement = _selectedState.SelectedIpso as GraphicalUiElement;
+        isNineslice = false;
+        customFrameTextureCoordinateWidth = null;
+        Texture2D? textureToAssign = null;
+
+        if (graphicalUiElement != null)
         {
-            nineSliceGuideLines[i].Visible = showNineSliceGuides;
-        }
+            var containedRenderable = graphicalUiElement.RenderableComponent;
 
-        // todo - this hasn't been tested extensively to make sure it aligns
-        // pixel-perfect with how NineSlices work, but it's a good initial guess
-        if (showNineSliceGuides && CurrentTexture != null)
-        {
-            var texture = CurrentTexture;
-
-            var textureWidth = texture.Width;
-            var textureHeight = texture.Height;
-
-            var control = mainControl.InnerControl;
-            var selector = control.RectangleSelector;
-
-            float left = 0;
-            float top = 0;
-            float right = CurrentTexture.Width;
-            float bottom = CurrentTexture.Height;
-
-            float width = CurrentTexture.Width;
-            float height = CurrentTexture.Height;
-
-            if (selector != null)
+            if (containedRenderable is Sprite asSprite)
             {
-                left = selector.Left;
-                right = selector.Right;
-                top = selector.Top;
-                bottom = selector.Bottom;
+                textureToAssign = asSprite.Texture;
+            }
+            else if (containedRenderable is NineSlice nineSlice)
+            {
+                isNineslice = true;
+                customFrameTextureCoordinateWidth = nineSlice.CustomFrameTextureCoordinateWidth;
+                var isUsingSameTextures =
+                    nineSlice.TopLeftTexture == nineSlice.CenterTexture &&
+                    nineSlice.TopTexture == nineSlice.CenterTexture &&
+                    nineSlice.TopRightTexture == nineSlice.CenterTexture &&
+                    nineSlice.LeftTexture == nineSlice.CenterTexture &&
+                    nineSlice.RightTexture == nineSlice.CenterTexture &&
+                    nineSlice.BottomLeftTexture == nineSlice.CenterTexture &&
+                    nineSlice.BottomTexture == nineSlice.CenterTexture &&
+                    nineSlice.BottomRightTexture == nineSlice.CenterTexture;
 
-                width = selector.Width;
-                height = selector.Height;
+                if (isUsingSameTextures)
+                {
+                    textureToAssign = nineSlice.CenterTexture;
+                }
             }
 
-            var guideLeft = left + width / 3.0f;
-            var guideRight = left + width * 2.0f / 3.0f;
-            var guideTop = top + height / 3.0f;
-            var guideBottom = top + height * 2.0f / 3.0f;
-
-            if (customFrameTextureCoordinateWidth != null)
+            if (textureToAssign == null && _currentExposedSource != null)
             {
-                guideLeft = left + customFrameTextureCoordinateWidth.Value;
-                guideRight = right - customFrameTextureCoordinateWidth.Value;
-                guideTop = top + customFrameTextureCoordinateWidth.Value;
-                guideBottom = bottom - customFrameTextureCoordinateWidth.Value;
+                var innerChild = graphicalUiElement.Children
+                    .FirstOrDefault(c => c.Name == _currentExposedSource.SourceObjectName);
+
+                if (innerChild is GraphicalUiElement innerGue)
+                {
+                    var innerRenderable = innerGue.RenderableComponent;
+                    if (innerRenderable is Sprite innerSprite)
+                    {
+                        textureToAssign = innerSprite.Texture;
+                    }
+                    else if (innerRenderable is NineSlice innerNineSlice)
+                    {
+                        isNineslice = true;
+                        customFrameTextureCoordinateWidth = innerNineSlice.CustomFrameTextureCoordinateWidth;
+                        var isUsingSameTextures =
+                            innerNineSlice.TopLeftTexture == innerNineSlice.CenterTexture &&
+                            innerNineSlice.TopTexture == innerNineSlice.CenterTexture &&
+                            innerNineSlice.TopRightTexture == innerNineSlice.CenterTexture &&
+                            innerNineSlice.LeftTexture == innerNineSlice.CenterTexture &&
+                            innerNineSlice.RightTexture == innerNineSlice.CenterTexture &&
+                            innerNineSlice.BottomLeftTexture == innerNineSlice.CenterTexture &&
+                            innerNineSlice.BottomTexture == innerNineSlice.CenterTexture &&
+                            innerNineSlice.BottomRightTexture == innerNineSlice.CenterTexture;
+
+                        if (isUsingSameTextures)
+                        {
+                            textureToAssign = innerNineSlice.CenterTexture;
+                        }
+                    }
+                }
             }
-
-            var leftLine = nineSliceGuideLines[0];
-            leftLine.X = guideLeft;
-            leftLine.Y = top;
-            leftLine.RelativePoint.X = 0;
-            leftLine.RelativePoint.Y = bottom - top;
-
-            var rightLine = nineSliceGuideLines[1];
-            rightLine.X = guideRight;
-            rightLine.Y = top;
-            rightLine.RelativePoint.X = 0;
-            rightLine.RelativePoint.Y = bottom - top;
-
-            var topLine = nineSliceGuideLines[2];
-            topLine.X = left;
-            topLine.Y = guideTop;
-            topLine.RelativePoint.X = right - left;
-            topLine.RelativePoint.Y = 0;
-
-            var bottomLine = nineSliceGuideLines[3];
-            bottomLine.X = left;
-            bottomLine.Y = guideBottom;
-            bottomLine.RelativePoint.X = right - left;
-            bottomLine.RelativePoint.Y = 0;
         }
+
+        return textureToAssign;
     }
 
     private void RefreshLineGrid()
     {
-        lineGrid.Visible = ViewModel.IsSnapToGridChecked;
-
-
-        lineGrid.ColumnWidth = ViewModel.SelectedSnapToGridValue;
-        lineGrid.RowWidth = ViewModel.SelectedSnapToGridValue;
-
-        if (CurrentTexture != null)
-        {
-            var totalWidth = CurrentTexture.Width;
-
-            var columnCount = (totalWidth / lineGrid.ColumnWidth);
-            if (columnCount != (int)columnCount)
-            {
-                columnCount++;
-            }
-
-            lineGrid.ColumnCount = (int)columnCount;
-
-
-            var totalHeight = CurrentTexture.Height;
-            var rowCount = (totalHeight / lineGrid.RowWidth);
-            if (rowCount != (int)rowCount)
-            {
-                rowCount++;
-            }
-
-            lineGrid.RowCount = (int)rowCount;
-        }
+        _lineGridManager.IsVisible = _isSnapToGridEnabled;
+        _lineGridManager.GridSize = _snapToGridSize;
+        _lineGridManager.CurrentTexture = CurrentTexture;
+        _lineGridManager.Refresh();
     }
 
-    public void HandleRegionDoubleClicked(ImageRegionSelectionControl control, ref LineRectangle textureOutlineRectangle)
+    public void HandleRegionDoubleClicked(ImageRegionSelectionControl control)
     {
+        if (_currentExposedSource != null) return;
+
         using var undoLock = _undoManager.RequestLock();
 
         var state = _selectedState.SelectedStateSave;
@@ -444,7 +408,8 @@ public class ControlLogic
             state.SetValue($"{instancePrefix}TextureAddress",
                 Gum.Managers.TextureAddress.Custom, nameof(TextureAddress));
 
-            RefreshOutline(control, ref textureOutlineRectangle);
+            _textureOutlineManager.CurrentTexture = control.CurrentTexture;
+            _textureOutlineManager.Refresh();
 
             RefreshSelector(RefreshType.Force);
 
@@ -466,23 +431,21 @@ public class ControlLogic
         int top = Math.Max(0, cursorY - 32);
 
         // If they are using the grid size, snap to it instead!
-        if (ViewModel.IsSnapToGridChecked)
+        if (_isSnapToGridEnabled)
         {
-            var gridSize = ViewModel.SelectedSnapToGridValue;
-
             // find the top left using division and floor
-            left = (cursorX / gridSize) * gridSize;
-            top = (cursorY / gridSize) * gridSize;
+            left = (cursorX / _snapToGridSize) * _snapToGridSize;
+            top = (cursorY / _snapToGridSize) * _snapToGridSize;
 
             // send back the rectangle selection
-            return new Rectangle(left, top, ViewModel.SelectedSnapToGridValue, ViewModel.SelectedSnapToGridValue);
+            return new Rectangle(left, top, _snapToGridSize, _snapToGridSize);
         }
 
         return new Rectangle(left, top, 64, 64);
 
     }
 
-    private void HandleStartRegionChanged(object sender, EventArgs e)
+    private void HandleStartRegionChanged(object? sender, EventArgs e)
     {
         _undoManager.RecordUndo();
 
@@ -495,13 +458,23 @@ public class ControlLogic
             instancePrefix += ".";
         }
 
-        oldTextureLeftValue = state.GetValue($"{instancePrefix}TextureLeft");
-        oldTextureTopValue = state.GetValue($"{instancePrefix}TextureTop");
-        oldTextureWidthValue = state.GetValue($"{instancePrefix}TextureWidth");
-        oldTextureHeightValue = state.GetValue($"{instancePrefix}TextureHeight");
+        if (_currentExposedSource != null)
+        {
+            oldTextureLeftValue = _currentExposedSource.ExposedLeftName != null ? state.GetValue($"{instancePrefix}{_currentExposedSource.ExposedLeftName}") : null;
+            oldTextureTopValue = _currentExposedSource.ExposedTopName != null ? state.GetValue($"{instancePrefix}{_currentExposedSource.ExposedTopName}") : null;
+            oldTextureWidthValue = _currentExposedSource.ExposedWidthName != null ? state.GetValue($"{instancePrefix}{_currentExposedSource.ExposedWidthName}") : null;
+            oldTextureHeightValue = _currentExposedSource.ExposedHeightName != null ? state.GetValue($"{instancePrefix}{_currentExposedSource.ExposedHeightName}") : null;
+        }
+        else
+        {
+            oldTextureLeftValue = state.GetValue($"{instancePrefix}TextureLeft");
+            oldTextureTopValue = state.GetValue($"{instancePrefix}TextureTop");
+            oldTextureWidthValue = state.GetValue($"{instancePrefix}TextureWidth");
+            oldTextureHeightValue = state.GetValue($"{instancePrefix}TextureHeight");
+        }
     }
 
-    private void HandleRegionChanged(object sender, EventArgs e)
+    private void HandleRegionChanged(object? sender, EventArgs e)
     {
         var control = sender as ImageRegionSelectionControl;
 
@@ -511,12 +484,6 @@ public class ControlLogic
         {
             var selector = control.RectangleSelector;
 
-            graphicalUiElement.TextureLeft = MathFunctions.RoundToInt(selector.Left);
-            graphicalUiElement.TextureTop = MathFunctions.RoundToInt(selector.Top);
-
-            graphicalUiElement.TextureWidth = MathFunctions.RoundToInt(selector.Width);
-            graphicalUiElement.TextureHeight = MathFunctions.RoundToInt(selector.Height);
-
             var state = _selectedState.SelectedStateSave;
             var instancePrefix = _selectedState.SelectedInstance?.Name;
 
@@ -525,21 +492,47 @@ public class ControlLogic
                 instancePrefix += ".";
             }
 
+            if (_currentExposedSource != null)
+            {
+                var innerChild = FindExposedSourceChild(graphicalUiElement);
+                if (innerChild != null)
+                {
+                    innerChild.TextureLeft = MathFunctions.RoundToInt(selector.Left);
+                    innerChild.TextureTop = MathFunctions.RoundToInt(selector.Top);
+                    innerChild.TextureWidth = MathFunctions.RoundToInt(selector.Width);
+                    innerChild.TextureHeight = MathFunctions.RoundToInt(selector.Height);
 
+                    if (_currentExposedSource.ExposedLeftName != null)
+                        state.SetValue($"{instancePrefix}{_currentExposedSource.ExposedLeftName}", innerChild.TextureLeft, "int");
+                    if (_currentExposedSource.ExposedTopName != null)
+                        state.SetValue($"{instancePrefix}{_currentExposedSource.ExposedTopName}", innerChild.TextureTop, "int");
+                    if (_currentExposedSource.ExposedWidthName != null)
+                        state.SetValue($"{instancePrefix}{_currentExposedSource.ExposedWidthName}", innerChild.TextureWidth, "int");
+                    if (_currentExposedSource.ExposedHeightName != null)
+                        state.SetValue($"{instancePrefix}{_currentExposedSource.ExposedHeightName}", innerChild.TextureHeight, "int");
+                }
+            }
+            else
+            {
+                graphicalUiElement.TextureLeft = MathFunctions.RoundToInt(selector.Left);
+                graphicalUiElement.TextureTop = MathFunctions.RoundToInt(selector.Top);
+                graphicalUiElement.TextureWidth = MathFunctions.RoundToInt(selector.Width);
+                graphicalUiElement.TextureHeight = MathFunctions.RoundToInt(selector.Height);
 
-            state.SetValue($"{instancePrefix}TextureLeft", graphicalUiElement.TextureLeft, "int");
-            state.SetValue($"{instancePrefix}TextureTop", graphicalUiElement.TextureTop, "int");
-            state.SetValue($"{instancePrefix}TextureWidth", graphicalUiElement.TextureWidth, "int");
-            state.SetValue($"{instancePrefix}TextureHeight", graphicalUiElement.TextureHeight, "int");
-
+                state.SetValue($"{instancePrefix}TextureLeft", graphicalUiElement.TextureLeft, "int");
+                state.SetValue($"{instancePrefix}TextureTop", graphicalUiElement.TextureTop, "int");
+                state.SetValue($"{instancePrefix}TextureWidth", graphicalUiElement.TextureWidth, "int");
+                state.SetValue($"{instancePrefix}TextureHeight", graphicalUiElement.TextureHeight, "int");
+            }
 
             _guiCommands.RefreshVariableValues();
         }
 
-        RefreshNineSliceGuides();
+        _nineSliceGuideManager.Selector = mainControl.InnerControl.RectangleSelector;
+        _nineSliceGuideManager.Refresh();
     }
 
-    private void HandleEndRegionChanged(object sender, EventArgs e)
+    private void HandleEndRegionChanged(object? sender, EventArgs e)
     {
         var element = _selectedState.SelectedElement;
         var instance = _selectedState.SelectedInstance;
@@ -547,46 +540,39 @@ public class ControlLogic
 
         shouldRefreshAccordingToVariableSets = false;
         {
-            // This could be really heavy if we notify everyone of the changes. We should only do it when the editing stops...
-            _setVariableLogic.ReactToPropertyValueChanged("TextureLeft", oldTextureLeftValue,
-                element, instance, state, refresh: false);
-            _setVariableLogic.ReactToPropertyValueChanged("TextureTop", oldTextureTopValue,
-                element, instance, state, refresh: false);
-            _setVariableLogic.ReactToPropertyValueChanged("TextureWidth", oldTextureWidthValue,
-                element, instance, state, refresh: false);
-            _setVariableLogic.ReactToPropertyValueChanged("TextureHeight", oldTextureHeightValue,
-                element, instance, state, refresh: false);
+            if (_currentExposedSource != null)
+            {
+                if (_currentExposedSource.ExposedLeftName != null)
+                    _setVariableLogic.ReactToPropertyValueChanged(_currentExposedSource.ExposedLeftName, oldTextureLeftValue,
+                        element, instance, state, refresh: false);
+                if (_currentExposedSource.ExposedTopName != null)
+                    _setVariableLogic.ReactToPropertyValueChanged(_currentExposedSource.ExposedTopName, oldTextureTopValue,
+                        element, instance, state, refresh: false);
+                if (_currentExposedSource.ExposedWidthName != null)
+                    _setVariableLogic.ReactToPropertyValueChanged(_currentExposedSource.ExposedWidthName, oldTextureWidthValue,
+                        element, instance, state, refresh: false);
+                if (_currentExposedSource.ExposedHeightName != null)
+                    _setVariableLogic.ReactToPropertyValueChanged(_currentExposedSource.ExposedHeightName, oldTextureHeightValue,
+                        element, instance, state, refresh: false);
+            }
+            else
+            {
+                // This could be really heavy if we notify everyone of the changes. We should only do it when the editing stops...
+                _setVariableLogic.ReactToPropertyValueChanged("TextureLeft", oldTextureLeftValue,
+                    element, instance, state, refresh: false);
+                _setVariableLogic.ReactToPropertyValueChanged("TextureTop", oldTextureTopValue,
+                    element, instance, state, refresh: false);
+                _setVariableLogic.ReactToPropertyValueChanged("TextureWidth", oldTextureWidthValue,
+                    element, instance, state, refresh: false);
+                _setVariableLogic.ReactToPropertyValueChanged("TextureHeight", oldTextureHeightValue,
+                    element, instance, state, refresh: false);
+            }
         }
         shouldRefreshAccordingToVariableSets = true;
 
         _undoManager.RecordUndo();
 
         _fileCommands.TryAutoSaveCurrentElement();
-    }
-
-    public void RefreshOutline(ImageRegionSelectionControl control, ref LineRectangle textureOutlineRectangle)
-    {
-        var shouldShowOutline = control.CurrentTexture != null;
-        if (shouldShowOutline)
-        {
-            if (textureOutlineRectangle == null)
-            {
-                textureOutlineRectangle = new LineRectangle(control.SystemManagers);
-                textureOutlineRectangle.IsDotted = false;
-                textureOutlineRectangle.Color = Color.FromArgb(128, 255, 255, 255);
-                control.SystemManagers.ShapeManager.Add(textureOutlineRectangle);
-            }
-            textureOutlineRectangle.Width = control.CurrentTexture.Width;
-            textureOutlineRectangle.Height = control.CurrentTexture.Height;
-            textureOutlineRectangle.Visible = true;
-        }
-        else
-        {
-            if (textureOutlineRectangle != null)
-            {
-                textureOutlineRectangle.Visible = false;
-            }
-        }
     }
 
     public void RefreshSelector(RefreshType refreshType)
@@ -622,60 +608,85 @@ public class ControlLogic
         var shouldClearOut = true;
         if (_selectedState.SelectedStateSave != null)
         {
-
             var graphicalUiElement = _selectedState.SelectedIpso as GraphicalUiElement;
-            var rfv = new RecursiveVariableFinder(_selectedState.SelectedStateSave);
-            var instancePrefix = _selectedState.SelectedInstance?.Name;
 
-            if (!string.IsNullOrEmpty(instancePrefix))
+            if (_currentExposedSource != null && graphicalUiElement != null)
             {
-                instancePrefix += ".";
+                var innerChild = FindExposedSourceChild(graphicalUiElement);
+                if (innerChild != null &&
+                    (Gum.Managers.TextureAddress)innerChild.TextureAddress == Gum.Managers.TextureAddress.Custom)
+                {
+                    shouldClearOut = false;
+                    control.DesiredSelectorCount = 1;
+                    var selector = control.RectangleSelector;
+
+                    selector.Left = innerChild.TextureLeft;
+                    selector.Top = innerChild.TextureTop;
+                    selector.Width = innerChild.TextureWidth;
+                    selector.Height = innerChild.TextureHeight;
+
+                    selector.Visible = true;
+                    selector.ShowHandles = true;
+                    selector.ShowMoveCursorWhenOver = _currentExposedSource.ExposedLeftName != null || _currentExposedSource.ExposedTopName != null;
+
+                    this.CenterCameraOnSelection();
+                }
             }
-
-            var textureAddress = rfv.GetValue<Gum.Managers.TextureAddress>($"{instancePrefix}TextureAddress");
-            if (textureAddress == Gum.Managers.TextureAddress.Custom)
+            else
             {
-                shouldClearOut = false;
-                control.DesiredSelectorCount = 1;
+                var rfv = new RecursiveVariableFinder(_selectedState.SelectedStateSave);
+                var instancePrefix = _selectedState.SelectedInstance?.Name;
 
-                var selector = control.RectangleSelector;
+                if (!string.IsNullOrEmpty(instancePrefix))
+                {
+                    instancePrefix += ".";
+                }
+
+                var textureAddress = rfv.GetValue<Gum.Managers.TextureAddress>($"{instancePrefix}TextureAddress");
+                if (textureAddress == Gum.Managers.TextureAddress.Custom)
+                {
+                    shouldClearOut = false;
+                    control.DesiredSelectorCount = 1;
+
+                    var selector = control.RectangleSelector;
 
 
-                selector.Left = rfv.GetValue<int>($"{instancePrefix}TextureLeft");
-                selector.Width = rfv.GetValue<int>($"{instancePrefix}TextureWidth");
+                    selector.Left = rfv.GetValue<int>($"{instancePrefix}TextureLeft");
+                    selector.Width = rfv.GetValue<int>($"{instancePrefix}TextureWidth");
 
-                selector.Top = rfv.GetValue<int>($"{instancePrefix}TextureTop");
-                selector.Height = rfv.GetValue<int>($"{instancePrefix}TextureHeight");
+                    selector.Top = rfv.GetValue<int>($"{instancePrefix}TextureTop");
+                    selector.Height = rfv.GetValue<int>($"{instancePrefix}TextureHeight");
 
-                selector.Visible = true;
-                selector.ShowHandles = true;
-                selector.ShowMoveCursorWhenOver = true;
+                    selector.Visible = true;
+                    selector.ShowHandles = true;
+                    selector.ShowMoveCursorWhenOver = true;
 
-                this.CenterCameraOnSelection();
+                    this.CenterCameraOnSelection();
 
-            }
-            else if (textureAddress == TextureAddress.DimensionsBased)
-            {
-                shouldClearOut = false;
-                control.DesiredSelectorCount = 1;
-                var selector = control.RectangleSelector;
+                }
+                else if (textureAddress == TextureAddress.DimensionsBased)
+                {
+                    shouldClearOut = false;
+                    control.DesiredSelectorCount = 1;
+                    var selector = control.RectangleSelector;
 
-                selector.Left = rfv.GetValue<int>($"{instancePrefix}TextureLeft");
-                selector.Top = rfv.GetValue<int>($"{instancePrefix}TextureTop");
+                    selector.Left = rfv.GetValue<int>($"{instancePrefix}TextureLeft");
+                    selector.Top = rfv.GetValue<int>($"{instancePrefix}TextureTop");
 
-                var widthScale = rfv.GetValue<float>($"{instancePrefix}TextureWidthScale");
-                var heightScale = rfv.GetValue<float>($"{instancePrefix}TextureHeightScale");
+                    var widthScale = rfv.GetValue<float>($"{instancePrefix}TextureWidthScale");
+                    var heightScale = rfv.GetValue<float>($"{instancePrefix}TextureHeightScale");
 
-                var absoluteWidth = graphicalUiElement.GetAbsoluteWidth();
-                var absoluteHeight = graphicalUiElement.GetAbsoluteHeight();
+                    var absoluteWidth = graphicalUiElement.GetAbsoluteWidth();
+                    var absoluteHeight = graphicalUiElement.GetAbsoluteHeight();
 
-                selector.Width = absoluteWidth / widthScale;
-                selector.Height = absoluteHeight / heightScale;
+                    selector.Width = absoluteWidth / widthScale;
+                    selector.Height = absoluteHeight / heightScale;
 
-                selector.Visible = true;
-                selector.ShowHandles = false;
-                selector.AllowMoveWithoutHandles = true;
-                selector.ShowMoveCursorWhenOver = true;
+                    selector.Visible = true;
+                    selector.ShowHandles = false;
+                    selector.AllowMoveWithoutHandles = true;
+                    selector.ShowMoveCursorWhenOver = true;
+                }
             }
         }
 
@@ -685,28 +696,33 @@ public class ControlLogic
         }
     }
 
-    public async void CenterCameraOnSelection()
+    public void CenterCameraOnSelection()
     {
         var camera = SystemManagers.Renderer.Camera;
-
-        // For Vic K:
-        // I could not figure
-        // out how to get the control
-        // to be fully laid out here. I
-        // had to put a delay of 100 ms and
-        // all works, but this feels dirty. I've
-        // tried looking at the control's ActualWidth 
-        // and ActualHeight, but that still returned 0
-        // uless I had the delay.
-        await Task.Delay(100);
-        mainControl.UpdateLayout();
-        var selector = mainControl.InnerControl.RectangleSelector;
-        if(selector != null)
+        mainControl.Dispatcher.BeginInvoke(() =>
         {
-            camera.X = selector.Left + selector.Width / 2.0f - camera.ClientWidth/(2 * camera.Zoom);
-            camera.Y = selector.Top + selector.Height / 2.0f - camera.ClientHeight/(2 * camera.Zoom);
-            UpdateScrollBarsToTexture();
-        }
+            var selector = mainControl.InnerControl.RectangleSelector;
+            if(selector != null)
+            {
+                camera.X = selector.Left + selector.Width / 2.0f - camera.ClientWidth/(2 * camera.Zoom);
+                camera.Y = selector.Top + selector.Height / 2.0f - camera.ClientHeight/(2 * camera.Zoom);
+                UpdateScrollBarsToTexture();
+            }
+        }, System.Windows.Threading.DispatcherPriority.Loaded);
+    }
 
+    internal void UpdateButtonSizes(double baseFontSize)
+    {
+        mainControl?.UpdateButtonSizes(baseFontSize);
+    }
+
+    internal void SetCheckerboardVisible(bool visible)
+    {
+        _backgroundManager.IsCheckerboardVisible = visible;
+    }
+
+    public void Dispose()
+    {
+        _backgroundManager?.Dispose();
     }
 }

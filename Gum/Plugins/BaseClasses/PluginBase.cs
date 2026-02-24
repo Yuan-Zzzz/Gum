@@ -4,7 +4,11 @@ using System.Linq;
 using Gum.DataTypes;
 using Gum.Gui.Windows;
 using Gum.DataTypes.Variables;
+using System.Windows;
 using System.Windows.Forms;
+using System.Windows;
+using MenuItem = System.Windows.Controls.MenuItem;
+using Separator = System.Windows.Controls.Separator;
 using Gum.DataTypes.Behaviors;
 using RenderingLibrary.Graphics;
 using Gum.Responses;
@@ -18,7 +22,6 @@ using Gum.Commands;
 using Gum.Managers;
 using Gum.Services;
 using Gum.Services.Dialogs;
-using Gum.Plugins.Errors;
 
 namespace Gum.Plugins.BaseClasses;
 
@@ -50,6 +53,7 @@ public abstract class PluginBase : IPlugin
     /// Raised when an element is duplicated. First argument is the old element, second is the new.
     /// </summary>
     public event Action<ElementSave, ElementSave>? ElementDuplicate;
+    public event Action<ElementSave> ElementReloaded;
 
     /// <summary>
     /// Event raised when the element is renamed.
@@ -138,7 +142,7 @@ public abstract class PluginBase : IPlugin
     public event Action<ElementSave, string>? VariableDelete;
 
     public event Action<ElementSave?>? ElementSelected;
-    public event Action<TreeNode>? TreeNodeSelected;
+    public event Action<TreeNode?>? TreeNodeSelected;
     public event Action<TreeNode>? StateWindowTreeNodeSelected;
     public event Func<ITreeNode?>? GetTreeNodeOver;
     public event Func<IEnumerable<ITreeNode>>? GetSelectedNodes;
@@ -168,6 +172,11 @@ public abstract class PluginBase : IPlugin
     /// </summary>
     public event Action<ElementSave, InstanceSave, string>? InstanceRename;
     public event Action<InstanceSave>? InstanceReordered;
+
+    /// <summary>
+    /// Event raised whenever a new instance is added to a behavior's RequiredInstances list.
+    /// </summary>
+    public event Action<BehaviorSave, BehaviorInstanceSave>? BehaviorInstanceAdd;
 
     public event Action? RefreshBehaviorView;
     public event Action<bool>? RefreshVariableView;
@@ -203,7 +212,8 @@ public abstract class PluginBase : IPlugin
     // Parameters are: extension, parentElement, instance, changedMember
     public event Func<string, ElementSave, InstanceSave, string, bool>? IsExtensionValid;
 
-    public event Action<IPositionedSizedObject>? SetHighlightedIpso;
+    public event Action<IPositionedSizedObject?>? SetHighlightedIpso;
+    public event Action<IPositionedSizedObject?>? HighlightTreeNode;
     public event Action<IPositionedSizedObject?>? IpsoSelected;
     public event Func<IEnumerable<IPositionedSizedObject>?> GetSelectedIpsos;
 
@@ -250,24 +260,24 @@ public abstract class PluginBase : IPlugin
     /// new List<string> { "Edit", "Properties" }
     /// </param>
     /// <returns>The newly-created menu item.</returns>
-    public ToolStripMenuItem AddMenuItem(IEnumerable<string> menuAndSubmenus) =>
+    public MenuItem AddMenuItem(IEnumerable<string> menuAndSubmenus) =>
         _menuStripManager.AddMenuItem(menuAndSubmenus);
-    
-    public ToolStripMenuItem AddMenuItem(params string[] menuAndSubmenus)
+
+    public MenuItem AddMenuItem(params string[] menuAndSubmenus)
     {
         return AddMenuItem((IEnumerable<string>)menuAndSubmenus);
     }
 
-    ToolStripMenuItem GetItem(string name) => _menuStripManager.GetItem(name);
+    MenuItem GetItem(string name) => _menuStripManager.GetItem(name);
 
-    public ToolStripMenuItem GetChildMenuItem(string parentText, string childText)
+    public MenuItem GetChildMenuItem(string parentText, string childText)
     {
-        ToolStripMenuItem parentItem = GetItem(parentText);
+        MenuItem parentItem = GetItem(parentText);
         if (parentItem != null)
         {
-            ToolStripMenuItem childMenuItem = parentItem.DropDown.Items
-                .Cast<ToolStripMenuItem>()
-                .FirstOrDefault(item => item.Text == childText);
+            MenuItem childMenuItem = parentItem.Items
+                .OfType<MenuItem>()
+                .FirstOrDefault(item => item.Header as string == childText);
 
             return childMenuItem;
         }
@@ -276,26 +286,35 @@ public abstract class PluginBase : IPlugin
     }
 
 
-    protected ToolStripMenuItem AddMenuItemTo(string whatToAdd, EventHandler eventHandler, string container, int? preferredIndex = null)
+    protected MenuItem AddMenuItemTo(string whatToAdd, RoutedEventHandler eventHandler, string container, int? preferredIndex = null)
     {
-        ToolStripMenuItem menuItem = new ToolStripMenuItem(whatToAdd, null, eventHandler);
-        ToolStripMenuItem itemToAddTo = GetItem(container);
-        //toolStripItemsAndParents.Add(menuItem, itemToAddTo);
+        var menuItem = new MenuItem { Header = whatToAdd };
+        if (eventHandler != null)
+            menuItem.Click += eventHandler;
 
+        MenuItem itemToAddTo = GetItem(container);
+
+#if DEBUG
+        if (itemToAddTo == null)
+        {
+            throw new InvalidOperationException(
+                $"Could not find menu item '{container}'. Make sure the menu is populated before calling AddMenuItemTo.");
+        }
+#endif
 
         if (preferredIndex == -1)
         {
-            itemToAddTo.DropDownItems.Add(menuItem);
+            itemToAddTo.Items.Add(menuItem);
         }
         else
         {
-            int indexToInsertAt = itemToAddTo.DropDownItems.Count;
+            int indexToInsertAt = itemToAddTo.Items.Count;
             if(preferredIndex != null)
             {
-                System.Math.Min(preferredIndex.Value, itemToAddTo.DropDownItems.Count);
+                indexToInsertAt = System.Math.Min(preferredIndex.Value, itemToAddTo.Items.Count);
             }
 
-            itemToAddTo.DropDownItems.Insert(indexToInsertAt, menuItem);
+            itemToAddTo.Items.Insert(indexToInsertAt, menuItem);
         }
 
         return menuItem;
@@ -308,13 +327,6 @@ public abstract class PluginBase : IPlugin
 
     public PluginTab CreateTab(System.Windows.FrameworkElement control, string tabName, TabLocation defaultLocation = TabLocation.RightBottom)
     {
-        //System.Windows.Forms.Integration.ElementHost wpfHost;
-        //wpfHost = new System.Windows.Forms.Integration.ElementHost();
-        //wpfHost.Dock = DockStyle.Fill;
-        //wpfHost.Child = control;
-
-        //return CreateTab(wpfHost, tabName);
-
         PluginTab newTab = _tabManager.AddControl(control, tabName, defaultLocation);
         newTab.Location = defaultLocation;
         newTab.Hide();
@@ -372,6 +384,8 @@ public abstract class PluginBase : IPlugin
     public void CallElementRename(ElementSave elementSave, string oldName) =>
         ElementRename?.Invoke(elementSave, oldName);
 
+    public void CallElementReloaded(ElementSave elementSave) =>
+        ElementReloaded?.Invoke(elementSave);
     public void CallStateRename(StateSave stateSave, string oldName) => 
         StateRename?.Invoke(stateSave, oldName);
     public void CallStateAdd(StateSave stateSave) => StateAdd?.Invoke(stateSave);
@@ -421,7 +435,7 @@ public abstract class PluginBase : IPlugin
 
     public void CallElementSelected(ElementSave? element) => ElementSelected?.Invoke(element);
 
-    public void CallTreeNodeSelected(TreeNode treeNode) => TreeNodeSelected?.Invoke(treeNode);
+    public void CallTreeNodeSelected(TreeNode? treeNode) => TreeNodeSelected?.Invoke(treeNode);
 
     public void CallStateWindowTreeNodeSelected(TreeNode treeNode) => StateWindowTreeNodeSelected?.Invoke(treeNode);
 
@@ -435,6 +449,8 @@ public abstract class PluginBase : IPlugin
     public void CallInstanceSelected(ElementSave elementSave, InstanceSave instance) => InstanceSelected?.Invoke(elementSave, instance);
 
     public void CallInstanceAdd(ElementSave elementSave, InstanceSave instance) => InstanceAdd?.Invoke(elementSave, instance);
+
+    public void CallBehaviorInstanceAdd(BehaviorSave behavior, BehaviorInstanceSave instance) => BehaviorInstanceAdd?.Invoke(behavior, instance);
 
     public void CallBehaviorReferencesChanged(ElementSave element) => BehaviorReferencesChanged?.Invoke(element);
 
@@ -493,8 +509,11 @@ public abstract class PluginBase : IPlugin
     public bool CallIsExtensionValid(string extension, ElementSave parentElement, InstanceSave instance, string changedMember) =>
         IsExtensionValid?.Invoke(extension, parentElement, instance, changedMember) ?? false;
 
-    public void CallSetHighlightedIpso(IPositionedSizedObject element) =>
+    public void CallSetHighlightedIpso(IPositionedSizedObject? element) =>
         SetHighlightedIpso?.Invoke(element);
+
+    public void CallHighlightTreeNode(IPositionedSizedObject? ipso) =>
+        HighlightTreeNode?.Invoke(ipso);
 
     public void CallIpsoSelected(IPositionedSizedObject? ipso) =>
         IpsoSelected?.Invoke(ipso);

@@ -134,10 +134,10 @@ public class BmfcSave
         return builder.ToString();
     }
 
-    private static List<int> ParseCharRanges(string charsStr)
+    internal static List<int> ParseCharRanges(string charsStr)
     {
         var allChars = new List<int>();
-        var ranges = charsStr.Split([','], StringSplitOptions.RemoveEmptyEntries);
+        var ranges = charsStr.Split(',', StringSplitOptions.RemoveEmptyEntries);
         foreach(var part in ranges)
         {
             if(part.Contains('-'))
@@ -401,7 +401,7 @@ public class BmfcSave
     {
         var tcs = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        void Process_Exited(object sender, EventArgs e)
+        void Process_Exited(object? sender, EventArgs e)
         {
             tcs.TrySetResult(process.ExitCode);
         }

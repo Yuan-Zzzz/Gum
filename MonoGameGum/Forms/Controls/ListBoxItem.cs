@@ -24,24 +24,25 @@ public class ListBoxItem :
     bool isSelected;
     public bool IsSelected
     {
-        get => isSelected; 
+        get => isSelected;
         set
         {
             if (value != isSelected)
             {
                 isSelected = value;
-
-                if (isSelected)
-                {
-                    Selected?.Invoke(this, null);
-                }
                 UpdateState();
+            }
+            // Always fire Selected event when set to true, even if already selected
+            // This allows ListBox to handle toggle logic in Multiple mode
+            if (value)
+            {
+                Selected?.Invoke(this, null);
             }
         }
     }
 
-    GraphicalUiElement text;
-    protected global::RenderingLibrary.Graphics.IText coreText;
+    GraphicalUiElement? text;
+    protected global::RenderingLibrary.Graphics.IText? coreText;
 
     internal bool IsHighlightSuppressed { get; set; } = false;
 

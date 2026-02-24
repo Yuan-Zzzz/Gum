@@ -6,6 +6,8 @@
 		<EnableDefaultCompileItems>false</EnableDefaultCompileItems>
 		<LangVersion>12.0</LangVersion>
 		<AnalysisLevel>none</AnalysisLevel>
+		<Nullable>enable</Nullable>
+
 		<UseWPF>true</UseWPF>
 	</PropertyGroup>
 	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
@@ -71,10 +73,6 @@
 		<ProjectReference Include="..\..\InputLibrary\InputLibrary.csproj">
 			<Project>{938d9a00-8529-4ce8-9077-e0a3994a73ea}</Project>
 			<Name>InputLibrary</Name>
-		</ProjectReference>
-		<ProjectReference Include="..\..\RenderingLibrary\RenderingLibrary.csproj">
-			<Project>{a86ee399-7c93-42e1-80ed-ca4cbf4ca573}</Project>
-			<Name>RenderingLibrary</Name>
 		</ProjectReference>
 		<ProjectReference Include="..\..\WpfDataUi\WpfDataUi.csproj">
 			<Project>{47241002-7eb5-433b-b931-a530bb6b84ee}</Project>

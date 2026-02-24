@@ -77,21 +77,29 @@ public class FormsUtilities
 
     public static GamePad[] Gamepads { get; private set; } = new GamePad[4];
 
+
+#if XNALIKE
     /// <summary>
     /// Initializes defaults to enable FlatRedBall Forms. This method should be called before using Forms.
     /// </summary>
     /// <remarks>
     /// Projects can make further customization to Forms such as by modifying the FrameworkElement.Root or the DefaultFormsComponents.
     /// </remarks>
-#if XNALIKE
     /// <param name="game">The Game instance, used for creating and updating input such as the Keyboard and Mouse</param>
-#endif
     /// <param name="systemManagers">The optional system managers. If not specified, the default system managers are used. Games with a single SystemsManager
     /// do not need to provide one.</param>
     /// <param name="defaultVisualsVersion">The version of visuals. Changing between visuals can change the apperance, as well as the structure of the Visual objects.</param>
-#if XNALIKE
     public static void InitializeDefaults(Game? game = null, SystemManagers? systemManagers = null, DefaultVisualsVersion defaultVisualsVersion = DefaultVisualsVersion.V1)
 #else
+    /// <summary>
+    /// Initializes defaults to enable FlatRedBall Forms. This method should be called before using Forms.
+    /// </summary>
+    /// <remarks>
+    /// Projects can make further customization to Forms such as by modifying the FrameworkElement.Root or the DefaultFormsComponents.
+    /// </remarks>
+    /// <param name="systemManagers">The optional system managers. If not specified, the default system managers are used. Games with a single SystemsManager
+    /// do not need to provide one.</param>
+    /// <param name="defaultVisualsVersion">The version of visuals. Changing between visuals can change the apperance, as well as the structure of the Visual objects.</param>
     public static void InitializeDefaults(SystemManagers? systemManagers = null, DefaultVisualsVersion defaultVisualsVersion = DefaultVisualsVersion.V2)
 #endif
     {
@@ -208,6 +216,12 @@ public class FormsUtilities
         }
 
         cursor = new Cursor();
+
+#if !FRB
+        // This was added to MonoGame/raylib on 1/22/2026 to support
+        // simplified behavior.
+        ICursor.VisualOverBehavior = VisualOverBehavior.IfHasEventsIsTrue;
+#endif
 
 #if XNALIKE
         keyboard = new Keyboard(game);
@@ -341,7 +355,7 @@ public class FormsUtilities
 
         var frameworkElementOverBefore =
             cursor.WindowPushed?.FormsControlAsObject as FrameworkElement ??
-            cursor.WindowOver?.FormsControlAsObject as FrameworkElement;
+            cursor.VisualOver?.FormsControlAsObject as FrameworkElement;
 
 #if XNALIKE
         cursor.Activity(gameTime.TotalGameTime.TotalSeconds);
@@ -441,7 +455,7 @@ public class FormsUtilities
 
         var frameworkElementOver =
             cursor.WindowPushed?.FormsControlAsObject as FrameworkElement ??
-            cursor.WindowOver?.FormsControlAsObject as FrameworkElement;
+            cursor.VisualOver?.FormsControlAsObject as FrameworkElement;
 
         // It's possible that a cursor pushes on a control, which would set its state to Pushed. After the cursor releases,
         // the control is no longer pushed, so it should update its state to reflect that it is no longer pushed, such as

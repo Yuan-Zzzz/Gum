@@ -14,11 +14,12 @@ public class ItemsControlVisual : ScrollViewerVisual
         // do not create the forms control here, because we want it to be of type ItemsControl
         tryCreateFormsObject:false)
     {
+        this.HasEvents = true;
         if (tryCreateFormsObject)
         {
             this.FormsControlAsObject = new ItemsControl(this);
         }
     }
 
-    public new ItemsControl? FormsControl => this.FormsControlAsObject as ItemsControl;
+    public new ItemsControl? FormsControl => (ItemsControl)FormsControlAsObject;
 }

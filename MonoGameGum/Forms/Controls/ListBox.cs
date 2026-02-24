@@ -38,8 +38,34 @@ using Microsoft.Xna.Framework.Input;
 namespace Gum.Forms.Controls;
 #endif
 
+#region SelectionMode Enum
+/// <summary>
+/// Specifies how items can be selected in a ListBox.
+/// </summary>
+public enum SelectionMode
+{
+    /// <summary>
+    /// Only one item can be selected at a time. Clicking an item deselects all others.
+    /// </summary>
+    Single,
+
+    /// <summary>
+    /// Multiple items can be selected. Each click toggles the selection state of the clicked item without affecting other selections.
+    /// </summary>
+    Multiple,
+
+    /// <summary>
+    /// Multiple items can be selected using modifier keys. Click selects one item (deselecting others),
+    /// Ctrl+Click toggles individual items, and Shift+Click selects a range from the anchor to the clicked item.
+    /// </summary>
+    Extended
+}
+#endregion
 
 #region ScrollIntoViewStyle Enums
+/// <summary>
+/// Specifies the scrolling behavior to use when bringing an item into view within a scrollable container.
+/// </summary>
 public enum ScrollIntoViewStyle
 {
     /// <summary>
@@ -50,16 +76,33 @@ public enum ScrollIntoViewStyle
     /// </summary>
     BringIntoView,
 
+    /// <summary>
+    /// Scrolls the item to the top of the visible area.
+    /// </summary>
     Top,
+    /// <summary>
+    /// Scrolls the item to the center of the visible area.
+    /// </summary>
     Center,
+    /// <summary>
+    /// Scrolls the item to the bottom of the visible area.
+    /// </summary>
     Bottom
 }
 #endregion
 
-
+/// <summary>
+/// Specifies the available modes for drag-and-drop reordering operations.
+/// </summary>
 public enum DragDropReorderMode
 {
+    /// <summary>
+    /// Drag+drop reordering is disabled.
+    /// </summary>
     NoReorder,
+    /// <summary>
+    /// Indicates that the operation should be performed immediately as dragging is happening.
+    /// </summary>
     Immediate
 }
 
@@ -81,11 +124,38 @@ public enum RepositionDirections
 
 #endif
 
+/// <summary>
+/// Represents a control that displays a collection of selectable items in a list, allowing users to select one item at
+/// a time. Supports keyboard, gamepad, and pointer navigation, as well as item reordering and focus management.
+/// </summary>
+/// <remarks>The ListBox provides advanced selection and navigation features, including support for focus
+/// management between the list as a whole and individual items, drag-and-drop reordering (when enabled), and
+/// integration with various input devices. Selection changes raise the SelectionChanged event, and controller input is
+/// handled via the ControllerButtonPushed event. The ListBox can be customized to display items using different visual
+/// templates and supports both data-bound and manually managed item collections. Thread safety is not guaranteed; all
+/// interactions should occur on the UI thread.</remarks>
 public class ListBox : ItemsControl, IInputReceiver
 {
     #region Fields/Properties
 
+    /// <summary>
+    /// Provides internal storage for the collection of list box items.
+    /// </summary>
+    /// <remarks>This field is intended for internal use and should not be accessed directly from outside the
+    /// containing class. Use public members to interact with the list box items when available.
+    ///
+    /// In normal usage, where view models or primitives are added to the Items collection, this
+    /// list is automatically kept up-to-date. However, it is possible for the Items collection to
+    /// not be up-to-date with ListBoxItemsInternal. This can happen if a visual is added directly
+    /// to the Items collection. In this case, the ListBox assumes that the added visual should be directly
+    /// displayed. However, if the visual already has a forms control, such as a Button having been added to
+    /// the list box, then the control is used as-is, and it is not even added to the ListBoxItems.
+    /// </remarks>
     protected List<ListBoxItem> ListBoxItemsInternal = new List<ListBoxItem>();
+
+    ObservableCollection<object> selectedItemsCollection = new ObservableCollection<object>();
+    bool _suppressSelectionSync = false;
+    SelectionMode selectionMode = SelectionMode.Single;
 
     ReadOnlyCollection<ListBoxItem> listBoxItemsReadOnly;
     public ReadOnlyCollection<ListBoxItem> ListBoxItems
@@ -98,6 +168,20 @@ public class ListBox : ItemsControl, IInputReceiver
             }
             return listBoxItemsReadOnly;
         }
+    }
+
+    /// <summary>
+    /// Gets the collection of currently selected items. This collection can be modified to change the selection,
+    /// and supports INotifyCollectionChanged for data binding. The collection cannot be replaced, only modified.
+    /// </summary>
+    /// <remarks>
+    /// In Single selection mode, this collection will contain at most one item.
+    /// In Multiple and Extended modes, this collection can contain multiple items.
+    /// Changes to this collection are synchronized with the IsSelected state of ListBoxItems.
+    /// </remarks>
+    public System.Collections.IList SelectedItems
+    {
+        get => selectedItemsCollection;
     }
 
     bool doListBoxItemsHaveFocus;
@@ -154,43 +238,72 @@ public class ListBox : ItemsControl, IInputReceiver
         }
     }
 
+
+
+
+    [Obsolete("Use VisualTemplate")]
     public Type ListBoxItemGumType
     {
-        get => base.ItemGumType;
-        set => base.ItemGumType = value;
+        get => ItemGumType;
+        set => ItemGumType = value;
     }
 
+    [Obsolete("Use FrameworkElementTemplate")]
     public Type ListBoxItemFormsType
     {
-        get { return base.ItemFormsType; }
-        set { base.ItemFormsType = value; }
+        get { return ItemFormsType; }
+        set { ItemFormsType = value; }
+    }
+
+
+    // There can be a logical conflict when dealing with list items.
+    // When creating a Gum list item, the Gum object may specify a Forms
+    // type. But the list can also specify a forms type. So which do we use?
+    // We'll use the list item forms type unless the list box has its value set
+    // explicitly. then we'll go to the list box type. This eventually should get
+    // marked as obsolete and we should instead go to a VM solution.
+    protected bool isItemTypeSetExplicitly = false;
+    Type itemFormsType = typeof(ListBoxItem);
+
+    protected Type ItemFormsType
+    {
+        get => itemFormsType;
+        set
+        {
+            if (value != itemFormsType)
+            {
+                isItemTypeSetExplicitly = true;
+                itemFormsType = value;
+            }
+        }
     }
 
     public object SelectedObject
     {
         get
         {
-            if (selectedIndex > -1)
+            // Return the first item in SelectedItems, or null if empty
+            if (selectedItemsCollection.Count > 0)
             {
-                if(Items.Count == 0 && SelectedIndex < ListBoxItems.Count)
-                {
-                    // This could be a ListBox with only 
-                    // backing visuals and not Items
-                    return ListBoxItems[selectedIndex];
-                }
-                else if(selectedIndex < Items.Count)
-                {
-                    return Items[selectedIndex];
-                }
+                return selectedItemsCollection[0];
             }
 
             return null;
         }
         set
         {
-            var index = Items?.IndexOf(value) ?? -1;
+            // Clear SelectedItems and select the single item
+            _suppressSelectionSync = true;
+            selectedItemsCollection.Clear();
 
-            SelectedIndex = index;
+            if (value != null)
+            {
+                selectedItemsCollection.Add(value);
+            }
+            _suppressSelectionSync = false;
+
+            // Sync the IsSelected state of all ListBoxItems
+            SyncIsSelectedFromSelectedItems();
 
             PushValueToViewModel();
         }
@@ -200,64 +313,41 @@ public class ListBox : ItemsControl, IInputReceiver
     {
         get
         {
-            return selectedIndex;
+            // Return the index of the first item in SelectedItems, or -1 if empty
+            if (selectedItemsCollection.Count > 0)
+            {
+                var firstSelectedItem = selectedItemsCollection[0];
+                return Items.IndexOf(firstSelectedItem);
+            }
+
+            return -1;
         }
         set
         {
-            if (value > -1 && value < ListBoxItemsInternal.Count)
+            if (value > -1 && value < Items.Count)
             {
-                selectedIndex = value;
+                var itemToSelect = Items[value];
 
-                var selectionChangedArgs = new SelectionChangedEventArgs();
+                // Clear SelectedItems and select the single item
+                _suppressSelectionSync = true;
+                selectedItemsCollection.Clear();
+                selectedItemsCollection.Add(itemToSelect);
+                _suppressSelectionSync = false;
 
-                var item = ListBoxItemsInternal[value];
-                if (item.IsEnabled)
-                {
-                    for (int i = 0; i < ListBoxItemsInternal.Count; i++)
-                    {
-                        var listBoxItem = ListBoxItemsInternal[i];
+                // Sync the IsSelected state of all ListBoxItems
+                SyncIsSelectedFromSelectedItems();
 
-                        if (listBoxItem.IsSelected && listBoxItem != item)
-                        {
-                            selectionChangedArgs.RemovedItems.Add(ListBoxItemsInternal[i]);
-                            listBoxItem.IsSelected = false;
-                        }
-                    }
-
-                    if (item.IsSelected == false)
-                    {
-                        selectionChangedArgs.AddedItems.Add(item);
-                        item.IsSelected = true;
-                    }
-                    item.IsSelected = true;
-                }
-
-                SelectionChanged?.Invoke(this, selectionChangedArgs);
-
-
-                ScrollIndexIntoView(SelectedIndex);
+                ScrollIndexIntoView(value);
             }
             else if (value == -1)
             {
-                // do we just set it to the value before doing any logic?
-                selectedIndex = -1;
+                // Clear all selections
+                _suppressSelectionSync = true;
+                selectedItemsCollection.Clear();
+                _suppressSelectionSync = false;
 
-                var selectionChangedArgs = new SelectionChangedEventArgs();
-
-                for (int i = 0; i < ListBoxItemsInternal.Count; i++)
-                {
-                    var listBoxItem = ListBoxItemsInternal[i];
-
-                    if (listBoxItem.IsSelected)
-                    {
-                        selectionChangedArgs.RemovedItems.Add(ListBoxItemsInternal[i]);
-                        listBoxItem.IsSelected = false;
-                    }
-                }
-
-
-                SelectionChanged?.Invoke(this, selectionChangedArgs);
-
+                // Sync the IsSelected state of all ListBoxItems
+                SyncIsSelectedFromSelectedItems();
             }
             else
             {
@@ -281,6 +371,65 @@ public class ListBox : ItemsControl, IInputReceiver
     /// list box item (such as toggling a check box) without focus being moved out of the individual items.
     /// </remarks>
     public bool LoseListItemFocusOnPrimaryInput { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets the selection behavior for the ListBox.
+    /// </summary>
+    /// <remarks>
+    /// Single mode (default): Only one item can be selected at a time.
+    /// Multiple mode: Each click toggles selection without modifier keys.
+    /// Extended mode: Click selects one, Ctrl+Click toggles, Shift+Click selects range.
+    /// Note: Gamepad and keyboard input always use single-selection behavior regardless of this mode.
+    /// </remarks>
+    public SelectionMode SelectionMode
+    {
+        get => selectionMode;
+        set
+        {
+            if (selectionMode != value)
+            {
+                selectionMode = value;
+
+                // If switching to Single mode with multiple selections, keep only the first one
+                if (selectionMode == SelectionMode.Single && selectedItemsCollection.Count > 1)
+                {
+                    _suppressSelectionSync = true;
+                    var firstItem = selectedItemsCollection[0];
+                    selectedItemsCollection.Clear();
+                    selectedItemsCollection.Add(firstItem);
+                    _suppressSelectionSync = false;
+                }
+            }
+        }
+    }
+
+    #region Modifier Key Configuration
+
+    /// <summary>
+    /// The primary key used to toggle individual item selection in Extended selection mode.
+    /// Default is LeftControl.
+    /// </summary>
+    public static Keys ToggleSelectionModifierKey { get; set; } = Keys.LeftControl;
+
+    /// <summary>
+    /// The alternate key used to toggle individual item selection in Extended selection mode.
+    /// Default is RightControl.
+    /// </summary>
+    public static Keys AlternateToggleSelectionModifierKey { get; set; } = Keys.RightControl;
+
+    /// <summary>
+    /// The primary key used to select a range of items in Extended selection mode.
+    /// Default is LeftShift.
+    /// </summary>
+    public static Keys RangeSelectionModifierKey { get; set; } = Keys.LeftShift;
+
+    /// <summary>
+    /// The alternate key used to select a range of items in Extended selection mode.
+    /// Default is RightShift.
+    /// </summary>
+    public static Keys AlternateRangeSelectionModifierKey { get; set; } = Keys.RightShift;
+
+    #endregion
 
     public override string DisplayMemberPath
     { 
@@ -367,10 +516,12 @@ public class ListBox : ItemsControl, IInputReceiver
 
     public ListBox() : base()
     {
+        selectedItemsCollection.CollectionChanged += HandleSelectedItemsCollectionChanged;
     }
 
     public ListBox(InteractiveGue visual) : base(visual)
     {
+        selectedItemsCollection.CollectionChanged += HandleSelectedItemsCollectionChanged;
     }
 
     protected override void ReactToVisualChanged()
@@ -516,34 +667,163 @@ public class ListBox : ItemsControl, IInputReceiver
 
     private void HandleItemSelected(object? sender, EventArgs e)
     {
-        var args = new SelectionChangedEventArgs();
-
-        for (int i = 0; i < ListBoxItemsInternal.Count; i++)
+        if (_suppressSelectionSync)
         {
-            var listBoxItemAtI = ListBoxItemsInternal[i];
-            if (listBoxItemAtI != sender && listBoxItemAtI.IsSelected)
-            {
-                var deselectedItem = listBoxItemAtI.BindingContext ?? listBoxItemAtI;
-                args.RemovedItems.Add(deselectedItem);
-                listBoxItemAtI.IsSelected = false;
-            }
+            return;
         }
 
         var listBoxItem = sender as ListBoxItem;
-        selectedIndex = ListBoxItemsInternal.IndexOf(listBoxItem);
-
-        // Items.Count could be smaller than ListBoxItemsInternal if the ListBoxItems
-        // were added directl on the visual
-        if (selectedIndex > -1 && selectedIndex < Items.Count)
+        if (listBoxItem == null || !listBoxItem.IsEnabled)
         {
-            args.AddedItems.Add(Items[selectedIndex]);
-        }
-        else if(listBoxItem != null)
-        {
-            args.AddedItems.Add(listBoxItem);
+            return;
         }
 
-        SelectionChanged?.Invoke(this, args);
+        var clickedIndex = ListBoxItemsInternal.IndexOf(listBoxItem);
+        if (clickedIndex < 0 || clickedIndex >= Items.Count)
+        {
+            return;
+        }
+
+        var clickedItem = Items[clickedIndex];
+
+        // Check if modifier keys are pressed (only for mouse/pointer input)
+        bool isCtrlDown = false;
+        bool isShiftDown = false;
+
+#if (MONOGAME || KNI || FNA) && !FRB
+        // Use the same pattern as KeyCombo and TextBox - check KeyboardsForUiControl.
+        // If the list is empty, no modifiers are detected (consistent with the rest of Gum's keyboard input handling).
+        var keyboards = FrameworkElement.KeyboardsForUiControl;
+        foreach (var keyboard in keyboards)
+        {
+            if (keyboard.KeyDown(ToggleSelectionModifierKey) || keyboard.KeyDown(AlternateToggleSelectionModifierKey))
+            {
+                isCtrlDown = true;
+            }
+            if (keyboard.KeyDown(RangeSelectionModifierKey) || keyboard.KeyDown(AlternateRangeSelectionModifierKey))
+            {
+                isShiftDown = true;
+            }
+        }
+#endif
+
+        var args = new SelectionChangedEventArgs();
+
+        _suppressSelectionSync = true;
+
+        switch (SelectionMode)
+        {
+            case SelectionMode.Single:
+                // Deselect all other items
+                foreach (var item in selectedItemsCollection.ToList())
+                {
+                    if (item != clickedItem)
+                    {
+                        args.RemovedItems.Add(item);
+                    }
+                }
+                selectedItemsCollection.Clear();
+
+                // Select the clicked item
+                if (!selectedItemsCollection.Contains(clickedItem))
+                {
+                    selectedItemsCollection.Add(clickedItem);
+                    args.AddedItems.Add(clickedItem);
+                }
+                break;
+
+            case SelectionMode.Multiple:
+                // Toggle the clicked item
+                if (selectedItemsCollection.Contains(clickedItem))
+                {
+                    selectedItemsCollection.Remove(clickedItem);
+                    args.RemovedItems.Add(clickedItem);
+                }
+                else
+                {
+                    selectedItemsCollection.Add(clickedItem);
+                    args.AddedItems.Add(clickedItem);
+                }
+                break;
+
+            case SelectionMode.Extended:
+                if (isCtrlDown)
+                {
+                    // Ctrl+Click: Toggle the clicked item
+                    if (selectedItemsCollection.Contains(clickedItem))
+                    {
+                        selectedItemsCollection.Remove(clickedItem);
+                        args.RemovedItems.Add(clickedItem);
+                    }
+                    else
+                    {
+                        selectedItemsCollection.Add(clickedItem);
+                        args.AddedItems.Add(clickedItem);
+                    }
+                }
+                else if (isShiftDown)
+                {
+                    // Shift+Click: Select range from anchor to clicked item
+                    if (selectedItemsCollection.Count > 0)
+                    {
+                        var anchorItem = selectedItemsCollection[0];
+                        var anchorIndex = Items.IndexOf(anchorItem);
+
+                        if (anchorIndex >= 0)
+                        {
+                            var minIndex = System.Math.Min(anchorIndex, clickedIndex);
+                            var maxIndex = System.Math.Max(anchorIndex, clickedIndex);
+
+                            // Select all enabled items in range
+                            for (int i = minIndex; i <= maxIndex; i++)
+                            {
+                                if (i < ListBoxItemsInternal.Count && ListBoxItemsInternal[i].IsEnabled)
+                                {
+                                    var itemInRange = Items[i];
+                                    if (!selectedItemsCollection.Contains(itemInRange))
+                                    {
+                                        selectedItemsCollection.Add(itemInRange);
+                                        args.AddedItems.Add(itemInRange);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // No anchor, just select the clicked item
+                        selectedItemsCollection.Add(clickedItem);
+                        args.AddedItems.Add(clickedItem);
+                    }
+                }
+                else
+                {
+                    // Click alone: Select only the clicked item, deselect all others
+                    foreach (var item in selectedItemsCollection.ToList())
+                    {
+                        if (item != clickedItem)
+                        {
+                            args.RemovedItems.Add(item);
+                        }
+                    }
+                    selectedItemsCollection.Clear();
+
+                    selectedItemsCollection.Add(clickedItem);
+                    args.AddedItems.Add(clickedItem);
+                }
+                break;
+        }
+
+        _suppressSelectionSync = false;
+
+        // Sync IsSelected state for all ListBoxItems
+        SyncIsSelectedFromSelectedItems();
+
+        // Fire SelectionChanged event
+        if (args.AddedItems.Count > 0 || args.RemovedItems.Count > 0)
+        {
+            SelectionChanged?.Invoke(this, args);
+        }
 
         PushValueToViewModel(nameof(SelectedObject));
         PushValueToViewModel(nameof(SelectedIndex));
@@ -655,6 +935,176 @@ public class ListBox : ItemsControl, IInputReceiver
 
     #endregion
 
+    #region Selection Synchronization
+
+    /// <summary>
+    /// Synchronizes the IsSelected state of all ListBoxItems based on the SelectedItems collection.
+    /// </summary>
+    private void SyncIsSelectedFromSelectedItems()
+    {
+        if (_suppressSelectionSync)
+        {
+            return;
+        }
+
+        _suppressSelectionSync = true;
+
+        var selectionChangedArgs = new SelectionChangedEventArgs();
+
+        for (int i = 0; i < ListBoxItemsInternal.Count; i++)
+        {
+            var listBoxItem = ListBoxItemsInternal[i];
+            var item = i < Items.Count ? Items[i] : listBoxItem;
+
+            bool shouldBeSelected = selectedItemsCollection.Contains(item);
+
+            if (listBoxItem.IsSelected != shouldBeSelected)
+            {
+                listBoxItem.IsSelected = shouldBeSelected;
+
+                if (shouldBeSelected)
+                {
+                    selectionChangedArgs.AddedItems.Add(item);
+                }
+                else
+                {
+                    selectionChangedArgs.RemovedItems.Add(item);
+                }
+            }
+        }
+
+        _suppressSelectionSync = false;
+
+        // Update selectedIndex for backward compatibility
+        selectedIndex = SelectedIndex;
+
+        // Fire SelectionChanged event if there were changes
+        if (selectionChangedArgs.AddedItems.Count > 0 || selectionChangedArgs.RemovedItems.Count > 0)
+        {
+            SelectionChanged?.Invoke(this, selectionChangedArgs);
+        }
+    }
+
+    /// <summary>
+    /// Handles changes to the SelectedItems collection and synchronizes the IsSelected state of ListBoxItems.
+    /// </summary>
+    private void HandleSelectedItemsCollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (_suppressSelectionSync)
+        {
+            return;
+        }
+
+        _suppressSelectionSync = true;
+
+        var selectionChangedArgs = new SelectionChangedEventArgs();
+
+        switch (e.Action)
+        {
+            case NotifyCollectionChangedAction.Add:
+                if (e.NewItems != null)
+                {
+                    foreach (var item in e.NewItems)
+                    {
+                        var index = Items.IndexOf(item);
+                        if (index >= 0 && index < ListBoxItemsInternal.Count)
+                        {
+                            var listBoxItem = ListBoxItemsInternal[index];
+                            if (!listBoxItem.IsSelected)
+                            {
+                                listBoxItem.IsSelected = true;
+                                selectionChangedArgs.AddedItems.Add(item);
+                            }
+                        }
+                    }
+                }
+                break;
+
+            case NotifyCollectionChangedAction.Remove:
+                if (e.OldItems != null)
+                {
+                    foreach (var item in e.OldItems)
+                    {
+                        var index = Items.IndexOf(item);
+                        if (index >= 0 && index < ListBoxItemsInternal.Count)
+                        {
+                            var listBoxItem = ListBoxItemsInternal[index];
+                            if (listBoxItem.IsSelected)
+                            {
+                                listBoxItem.IsSelected = false;
+                                selectionChangedArgs.RemovedItems.Add(item);
+                            }
+                        }
+                    }
+                }
+                break;
+
+            case NotifyCollectionChangedAction.Reset:
+                // Deselect all items
+                for (int i = 0; i < ListBoxItemsInternal.Count; i++)
+                {
+                    var listBoxItem = ListBoxItemsInternal[i];
+                    if (listBoxItem.IsSelected)
+                    {
+                        listBoxItem.IsSelected = false;
+                        var item = i < Items.Count ? Items[i] : listBoxItem;
+                        selectionChangedArgs.RemovedItems.Add(item);
+                    }
+                }
+                break;
+
+            case NotifyCollectionChangedAction.Replace:
+                if (e.OldItems != null)
+                {
+                    foreach (var item in e.OldItems)
+                    {
+                        var index = Items.IndexOf(item);
+                        if (index >= 0 && index < ListBoxItemsInternal.Count)
+                        {
+                            var listBoxItem = ListBoxItemsInternal[index];
+                            if (listBoxItem.IsSelected)
+                            {
+                                listBoxItem.IsSelected = false;
+                                selectionChangedArgs.RemovedItems.Add(item);
+                            }
+                        }
+                    }
+                }
+                if (e.NewItems != null)
+                {
+                    foreach (var item in e.NewItems)
+                    {
+                        var index = Items.IndexOf(item);
+                        if (index >= 0 && index < ListBoxItemsInternal.Count)
+                        {
+                            var listBoxItem = ListBoxItemsInternal[index];
+                            if (!listBoxItem.IsSelected)
+                            {
+                                listBoxItem.IsSelected = true;
+                                selectionChangedArgs.AddedItems.Add(item);
+                            }
+                        }
+                    }
+                }
+                break;
+        }
+
+        _suppressSelectionSync = false;
+
+        // Update selectedIndex for backward compatibility
+        selectedIndex = SelectedIndex;
+
+        // Fire SelectionChanged event if there were changes
+        if (selectionChangedArgs.AddedItems.Count > 0 || selectionChangedArgs.RemovedItems.Count > 0)
+        {
+            SelectionChanged?.Invoke(this, selectionChangedArgs);
+            PushValueToViewModel(nameof(SelectedObject));
+            PushValueToViewModel(nameof(SelectedIndex));
+        }
+    }
+
+    #endregion
+
     #region Collection Changed
 
     bool _suppressCollectionChangedToBase = false;
@@ -665,19 +1115,33 @@ public class ListBox : ItemsControl, IInputReceiver
             base.HandleItemsCollectionChanged(sender, e);
         }
 
-        if (e.Action == NotifyCollectionChangedAction.Remove &&
-            (e.OldStartingIndex == selectedIndex ||
-                selectedIndex >= Items.Count))
+        // Handle removal of selected items from the Items collection
+        if (e.Action == NotifyCollectionChangedAction.Remove && e.OldItems != null)
         {
-            // we removed the selected item, so update the VM:
+            _suppressSelectionSync = true;
+
+            foreach (var removedItem in e.OldItems)
+            {
+                if (selectedItemsCollection.Contains(removedItem))
+                {
+                    selectedItemsCollection.Remove(removedItem);
+                }
+            }
+
+            _suppressSelectionSync = false;
 
             PushValueToViewModel(nameof(SelectedObject));
             PushValueToViewModel(nameof(SelectedIndex));
         }
-        else if (e.Action == NotifyCollectionChangedAction.Reset && selectedIndex >= 0)
+        else if (e.Action == NotifyCollectionChangedAction.Reset)
         {
-            SelectedIndex = -1;
+            // Clear all selections when Items is reset
+            _suppressSelectionSync = true;
+            selectedItemsCollection.Clear();
+            _suppressSelectionSync = false;
+
             PushValueToViewModel(nameof(SelectedObject));
+            PushValueToViewModel(nameof(SelectedIndex));
         }
     }
 
@@ -717,10 +1181,26 @@ public class ListBox : ItemsControl, IInputReceiver
     }
 
 
-
+    /// <summary>
+    /// Handles the removal of an item from the Items collection at the specified index by also
+    /// removing the corresponding ListBoxItem from the internal ListBoxItemsInternal collection.
+    /// </summary>
+    /// <param name="indexToRemoveFrom">The index in the Items collection.</param>
     protected override void HandleCollectionItemRemoved(int indexToRemoveFrom)
     {
-        ListBoxItemsInternal.RemoveAt(indexToRemoveFrom);
+        // indexToRemoveFrom is the index of the index in the Items list. 
+        // See the ListBoxItems for information on why this index many not
+        // align with ListBoxItemsInternal.
+        // A full solution should probably start from the top of the controls and count
+        // through all of them to find the ListBoxItems, but we can quickly solve this bug
+        // with a bounds check:
+        // https://github.com/vchelaru/Gum/issues/1380#issuecomment-3736165558
+        // This also is covered in a unit test:
+        // Items_Clear_ShouldWorkWhenAddingButtonVisual
+        if(indexToRemoveFrom < ListBoxItemsInternal.Count)
+        {
+            ListBoxItemsInternal.RemoveAt(indexToRemoveFrom);
+        }
     }
 
     protected override void HandleCollectionReset()
@@ -751,7 +1231,7 @@ public class ListBox : ItemsControl, IInputReceiver
     #region Scroll Item into view
 
     /// <summary>
-    /// Scrolls the list view so that the argument item is in view. The amount of scrolling depends on the scrollIntoViewStyle argument.
+    /// Scrolls the ListBox so that the argument item is in view. The amount of scrolling depends on the scrollIntoViewStyle argument.
     /// </summary>
     /// <param name="item">The item to scroll into view.</param>
     /// <param name="scrollIntoViewStyle">The desired location of the item after scrolling.</param>
@@ -762,6 +1242,11 @@ public class ListBox : ItemsControl, IInputReceiver
         ScrollIndexIntoView(itemIndex, scrollIntoViewStyle);
     }
 
+    /// <summary>
+    /// Scrolls the ListBox so that the item at the argument index is in view. The amount of scrolling depends on the scrollIntoViewStyle argument.
+    /// </summary>
+    /// <param name="itemIndex">The index of the item to scroll into view.</param>
+    /// <param name="scrollIntoViewStyle">The desired location of the item after scrolling.</param>
     public void ScrollIndexIntoView(int itemIndex, ScrollIntoViewStyle scrollIntoViewStyle = ScrollIntoViewStyle.BringIntoView)
     {
         if (itemIndex != -1)
@@ -784,18 +1269,27 @@ public class ListBox : ItemsControl, IInputReceiver
                     if (isAboveView)
                     {
                         amountToScroll = visualTop - viewTop;
-                        verticalScrollBar.Value += amountToScroll;
+                        if(verticalScrollBar != null)
+                        {
+                            verticalScrollBar.Value += amountToScroll;
+                        }
                     }
                     else if (isBelowView)
                     {
                         amountToScroll = visualBottom - viewBottom;
-                        verticalScrollBar.Value += amountToScroll;
+                        if (verticalScrollBar != null)
+                        {
+                            verticalScrollBar.Value += amountToScroll;
+                        }
                     }
 
                     break;
                 case ScrollIntoViewStyle.Top:
                     amountToScroll = visualTop - viewTop;
-                    verticalScrollBar.Value += amountToScroll;
+                    if (verticalScrollBar != null)
+                    {
+                        verticalScrollBar.Value += amountToScroll;
+                    }
                     break;
                 case ScrollIntoViewStyle.Center:
 
@@ -804,12 +1298,17 @@ public class ListBox : ItemsControl, IInputReceiver
                     var desiredViewTop = viewHeight / 2.0f + visualTop - clipContainer.GetAbsoluteHeight() / 2;
 
                     amountToScroll = desiredViewTop - viewTop;
-                    verticalScrollBar.Value += amountToScroll;
-
+                    if (verticalScrollBar != null)
+                    {
+                        verticalScrollBar.Value += amountToScroll;
+                    }
                     break;
                 case ScrollIntoViewStyle.Bottom:
                     amountToScroll = visualBottom - viewBottom;
-                    verticalScrollBar.Value += amountToScroll;
+                    if (verticalScrollBar != null)
+                    {
+                        verticalScrollBar.Value += amountToScroll;
+                    }
                     break;
             }
         }
@@ -869,8 +1368,11 @@ public class ListBox : ItemsControl, IInputReceiver
         }
 
         // let's just make sure it's removed
-        popup.Visual.RemoveFromManagers();
-
+        // don't remove from managers. Doing so
+        // resets the binding on the ListBox which 
+        // we don't want!
+        //popup.Visual.RemoveFromManagers();
+        popup.Visual.Parent = null;
         var layerToAddListBoxTo = GetLayerToAddTo(listBoxParent);
 
 #if FRB
@@ -967,6 +1469,10 @@ public class ListBox : ItemsControl, IInputReceiver
 
     private void DoListItemFocusUpdate()
     {
+        // NOTE: Gamepad and keyboard input always use single-selection behavior,
+        // regardless of the SelectionMode property. Multi-select is only supported
+        // via mouse/pointer input with modifier keys in Extended mode or click toggles in Multiple mode.
+
         var xboxGamepads = FrameworkElement.GamePadsForUiControl;
 
 

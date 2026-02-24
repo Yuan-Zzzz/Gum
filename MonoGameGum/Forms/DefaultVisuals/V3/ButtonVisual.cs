@@ -89,6 +89,7 @@ public class ButtonVisual : InteractiveGue
 
     public ButtonVisual(bool fullInstantiation = true, bool tryCreateFormsObject = true) : base(new InvisibleRenderable())
     {
+        this.HasEvents = true;
         Width = 128;
         Height = 5;
         HeightUnits = Gum.DataTypes.DimensionUnitType.RelativeToChildren;
@@ -240,5 +241,5 @@ public class ButtonVisual : InteractiveGue
         FocusedIndicator.Color = FocusedIndicatorColor;
     }
 
-    public Button FormsControl => FormsControlAsObject as Button;
+    public Button FormsControl => (Button)FormsControlAsObject;
 }

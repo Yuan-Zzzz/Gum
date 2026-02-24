@@ -1,4 +1,7 @@
-﻿using Gum.DataTypes;
+﻿#if MONOGAME || KNI || XNA4 || FNA
+#define XNALIKE
+#endif
+using Gum.DataTypes;
 using Gum.Graphics;
 using Gum.RenderingLibrary;
 using Gum.Wireframe;
@@ -10,10 +13,15 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
+#if RAYLIB
+using Raylib_cs;
+namespace Gum.GueDeriving;
+#else
 namespace MonoGameGum.GueDeriving;
+#endif
 
 /// <summary>
-/// Represents a text element which can display a string.
+/// A visual text element which can display a string.
 /// </summary>
 public class TextRuntime : InteractiveGue
 {
@@ -24,13 +32,13 @@ public class TextRuntime : InteractiveGue
         {
             if (mContainedText == null)
             {
-                mContainedText = this.RenderableComponent as Text;
+                mContainedText = (Text)this.RenderableComponent;
             }
             return mContainedText;
         }
     }
 
-#if !RAYLIB
+#if !RAYLIB && !SKIA
     /// <summary>
     /// The XNA blend state used when rendering the text. This controls how 
     /// color and alpha values blend with the background.
@@ -59,7 +67,6 @@ public class TextRuntime : InteractiveGue
         }
     }
 #endif
-
 
     /// <summary>
     /// The red component of the text color. Ranges from 0 to 255.
@@ -98,19 +105,25 @@ public class TextRuntime : InteractiveGue
     }
 
     /// <summary>
-    /// Gets or sets the color used to render the contained text. This includes color and alpha (opacity) components.
+    /// Gets or sets the color used to render the text. This includes color and alpha (opacity) components.
     /// </summary>
     public Microsoft.Xna.Framework.Color Color
     {
-        get
-        {
-            return RenderingLibrary.Graphics.XNAExtensions.ToXNA(ContainedText.Color);
-        }
+#if XNALIKE
+        get => RenderingLibrary.Graphics.XNAExtensions.ToXNA(ContainedText.Color);
         set
         {
             ContainedText.Color = RenderingLibrary.Graphics.XNAExtensions.ToSystemDrawing(value);
             NotifyPropertyChanged();
         }
+#else
+        get => ContainedText.Color;
+        set
+        {
+            ContainedText.Color = value;
+            NotifyPropertyChanged();
+        }
+#endif
     }
 
     /// <summary>
@@ -135,7 +148,7 @@ public class TextRuntime : InteractiveGue
         set => ContainedText.VerticalAlignment = value;
     }
 
-#if !RAYLIB
+#if !RAYLIB && !SKIA
     /// <summary>
     /// The maximum letters to display. This can be used to 
     /// create an effect where the text prints out letter-by-letter.
@@ -148,7 +161,10 @@ public class TextRuntime : InteractiveGue
             mContainedText.MaxLettersToShow = value;
         }
     }
+#endif
 
+
+#if !RAYLIB
     /// <summary>
     /// The maximum number of lines to display. This can be used to 
     /// limit how many lines of text are displayed at one time.
@@ -156,13 +172,11 @@ public class TextRuntime : InteractiveGue
     public int? MaxNumberOfLines
     {
         get => mContainedText.MaxNumberOfLines;
-        set
-        {
-            mContainedText.MaxNumberOfLines = value;
-        }
+        set => mContainedText.MaxNumberOfLines = value;
     }
 #endif
 
+#if !SKIA
     public BitmapFont BitmapFont
     {
         get => ContainedText.BitmapFont;
@@ -176,7 +190,25 @@ public class TextRuntime : InteractiveGue
             }
         }
     }
+#endif
 
+#if RAYLIB || XNALIKE
+    /// <summary>
+    /// A multiplier used when rendering the text. The default value is 1.0.
+    /// </summary>
+    /// <remarks>
+    /// Setting this value to a value other than 1 scales the text accordingly. This is
+    /// a scalue value applied to the existing font, so a value larger than 1 can result
+    /// in the font appearing pixellated.
+    /// 
+    /// Since this value does not affect the underlying Font, it can be changed without
+    /// requiring a dedicated font asset.
+    /// </remarks>
+#else
+    /// <summary>
+    /// A multiplier used when rendering the text. The default value is 1.0.
+    /// </summary>
+#endif
     public float FontScale
     {
         get => ContainedText.FontScale;
@@ -381,6 +413,14 @@ public class TextRuntime : InteractiveGue
     public static string DefaultFont = "Arial";
     public static int DefaultFontSize = 18;
 
+    /// <summary>
+    /// Indicates whether the font should be assigned during object construction.
+    /// </summary>
+    /// <remarks>Set this field to <see langword="true"/> to assign the font in the constructor, or to <see
+    /// langword="false"/> to defer font assignment until later in the object's lifecycle. This can be set to false
+    /// if TextRuntime instances are always given a custom font, so this can prevent unnecessary font loading/assignment.</remarks>
+    public static bool AssignFontInConstructor = true;
+
     public float DefaultWidth = 0;
     public float DefaultHeight = 0;
 
@@ -393,6 +433,7 @@ public class TextRuntime : InteractiveGue
     {
         if(fullInstantiation)
         {
+            this.SuspendLayout();
             var textRenderable = new Text(systemManagers ?? SystemManagers.Default);
             textRenderable.RenderBoundary = false;
             mContainedText = textRenderable;
@@ -403,13 +444,30 @@ public class TextRuntime : InteractiveGue
             WidthUnits = DefaultWidthUnits;
             Height = DefaultHeight;
             HeightUnits = DefaultHeightUnits;
-            this.FontSize = DefaultFontSize;
-            this.Font = DefaultFont;
+            if(AssignFontInConstructor)
+            {
+                this.FontSize = DefaultFontSize;
+                this.Font = DefaultFont;
+            }
             HasEvents = false;
 
             textRenderable.RawText = "Hello World";
+            this.ResumeLayout();
         }
     }
 
+#if !RAYLIB
+    // We should phase this out, so not adding it to raylib. Instead, add to root
     public void AddToManagers() => base.AddToManagers(SystemManagers.Default, layer:null);
+#endif
+
+    /// <summary>
+    /// Returns the index of the character at the specified screen position. This returns the index
+    /// within the WrappedText, so to index in, you need to loop through each line.
+    /// </summary>
+    /// <param name="screenX">The screen x position, usually obtained by Cursor.XRespectingGumZoomAndBounds()</param>
+    /// <param name="screenY">The screen y position, usually obtained by Cursor.YRespectingGumZoomAndBounds()</param>
+    /// <returns>The index in the WrappedText</returns>
+    public int GetCharacterIndexAtPosition(float screenX, float screenY) => ContainedText.GetCharacterIndexAtPosition(screenX, screenY);
+
 }

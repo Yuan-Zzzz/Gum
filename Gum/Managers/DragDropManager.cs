@@ -1,5 +1,4 @@
 using CommonFormsAndControls;
-using CommonFormsAndControls.Forms;
 using Gum.Commands;
 using Gum.Converters;
 using Gum.DataTypes;
@@ -27,6 +26,7 @@ using System.Windows.Forms;
 using System.Windows.Navigation;
 using Gum.Extensions;
 using ToolsUtilities;
+using Gum.Plugins.InternalPlugins.VariableGrid;
 
 namespace Gum.Managers;
 
@@ -42,14 +42,11 @@ public interface ITreeNode
     void Expand();
 }
 
-public class DragDropManager
+public class DragDropManager : IDragDropManager
 {
     #region Fields
 
-    static DragDropManager mSelf;
-
-    ITreeNode? mDraggedItem;
-    private readonly CircularReferenceManager _circularReferenceManager;
+    private readonly ICircularReferenceManager _circularReferenceManager;
     private readonly ISelectedState _selectedState;
     private readonly IElementCommands _elementCommands;
     private readonly IRenameLogic _renameLogic;
@@ -57,11 +54,14 @@ public class DragDropManager
     private readonly IDialogService _dialogService;
     private readonly IGuiCommands _guiCommands;
     private readonly IFileCommands _fileCommands;
-    private readonly SetVariableLogic _setVariableLogic;
-    private readonly CopyPasteLogic _copyPasteLogic;
-    private readonly ImportLogic _importLogic;
-    private readonly WireframeObjectManager _wireframeObjectManager;
-    private readonly PluginManager _pluginManager;
+    private readonly ISetVariableLogic _setVariableLogic;
+    private readonly ICopyPasteLogic _copyPasteLogic;
+    private readonly IImportLogic _importLogic;
+    private readonly IWireframeObjectManager _wireframeObjectManager;
+    private readonly IPluginManager _pluginManager;
+    private readonly IReorderLogic _reorderLogic;
+    private readonly IProjectManager _projectManager;
+    private readonly IProjectState _projectState;
 
     #endregion
 
@@ -75,7 +75,9 @@ public class DragDropManager
 
     #endregion
 
-    public DragDropManager(CircularReferenceManager circularReferenceManager,
+    #region Constructor
+
+    public DragDropManager(ICircularReferenceManager circularReferenceManager,
         ISelectedState selectedState,
         IElementCommands elementCommands,
         IRenameLogic renameLogic,
@@ -83,11 +85,14 @@ public class DragDropManager
         IDialogService dialogService,
         IGuiCommands guiCommands,
         IFileCommands fileCommands,
-        SetVariableLogic setVariableLogic, 
-        CopyPasteLogic copyPasteLogic,
-        ImportLogic importLogic,
-        WireframeObjectManager wireframeObjectManager,
-        PluginManager pluginManager)
+        ISetVariableLogic setVariableLogic,
+        ICopyPasteLogic copyPasteLogic,
+        IImportLogic importLogic,
+        IWireframeObjectManager wireframeObjectManager,
+        IPluginManager pluginManager,
+        IReorderLogic reorderLogic,
+        IProjectManager projectManager,
+        IProjectState projectState)
     {
         _circularReferenceManager = circularReferenceManager;
         _selectedState = selectedState;
@@ -102,15 +107,14 @@ public class DragDropManager
         _importLogic = importLogic;
         _wireframeObjectManager = wireframeObjectManager;
         _pluginManager = pluginManager;
+        _reorderLogic = reorderLogic;
+        _projectManager = projectManager;
+        _projectState = projectState;
     }
 
+    #endregion
+
     #region Drag+drop File (from windows explorer)
-
-
-
-
-
-
 
     public IEnumerable<string> ValidTextureExtensions
     {
@@ -163,7 +167,7 @@ public class DragDropManager
                 // Since the user dropped on another instance, let's try to parent it:
                 HandleDroppingInstanceOnTarget(targetInstance, newInstance, targetInstance.ParentContainer, targetTreeNode, index);
 
-                // HandleDroppingInstanceOnTarget internally calls 
+                // HandleDroppingInstanceOnTarget internally calls
                 // _wireframeObjectManager.RefreshAll, but since
                 // the Parent is set in HandleDroppedElementInElement,
                 // then HandleDroppingInstanceOnTarget does not report the
@@ -214,7 +218,7 @@ public class DragDropManager
 
             if(fullFolderPath != fullElementFilePath)
             {
-                var projectFolder = FileManager.GetDirectory(ProjectManager.Self.GumProjectSave.FullFileName);
+                var projectFolder = FileManager.GetDirectory(_projectManager.GumProjectSave.FullFileName);
 
                 string nodeRelativeToProject = FileManager.MakeRelative(fullFolderPath.FullPath, projectFolder + draggedAsElementSave.Subfolder + "/", preserveCase:true)
                     .Replace("\\", "/");
@@ -267,6 +271,11 @@ public class DragDropManager
 
             string name = GetUniqueNameForNewInstance(draggedElement, behavior);
 
+            // Capture the pre-change state for undo. We bypass the undo lock here because
+            // OnNodeSortingDropped already holds a lock, which would normally block
+            // RecordBehaviorState(). We need the snapshot before any change occurs.
+            _undoManager.RecordBehaviorState(behavior);
+
             // First we want to re-select the target so that it is highlighted in the tree view and not
             // the object we dragged off.  This is so that plugins can properly use the SelectedElement.
             _selectedState.SelectedBehavior = behavior;
@@ -299,7 +308,7 @@ public class DragDropManager
             }
 #endif
 
-            string name = GetUniqueNameForNewInstance(draggedAsElementSave, target);
+            string name = _elementCommands.GetUniqueNameForNewInstance(draggedAsElementSave, target);
 
             // First we want to re-select the target so that it is highlighted in the tree view and not
             // the object we dragged off.  This is so that plugins can properly use the SelectedElement.
@@ -356,21 +365,6 @@ public class DragDropManager
         return errorMessage;
     }
 
-    private string GetUniqueNameForNewInstance(ElementSave elementSaveForNewInstance, ElementSave element)
-    {
-#if DEBUG
-        if (elementSaveForNewInstance == null)
-        {
-            throw new ArgumentNullException("elementSave");
-        }
-#endif
-        // remove the path - we dont want folders to be part of the name
-        string name = FileManager.RemovePath( elementSaveForNewInstance.Name ) + "Instance";
-        IEnumerable<string> existingNames = element.Instances.Select(i => i.Name);
-
-        return StringFunctions.MakeStringUnique(name, existingNames);
-    }
-
 
     private string GetUniqueNameForNewInstance(ElementSave elementSaveForNewInstance, BehaviorSave container)
     {
@@ -414,7 +408,7 @@ public class DragDropManager
         // which is not currently selected. We need it to be selected for
         // undos to record properly, so let's select it first:
         _selectedState.SelectedComponent = targetComponent;
-        
+
         using var undoLock = _undoManager.RequestLock();
 
 
@@ -475,10 +469,48 @@ public class DragDropManager
                 {
                     draggedAsInstanceSave.ParentContainer?.DefaultState.Clone() ?? new StateSave()
                 };
-                    
-                _copyPasteLogic.PasteInstanceSaves(instances,
+
+                _copyPasteLogic.ForceSelectionChanged();
+
+                // by creating a forced selected state,
+                // we can precisely control the target for
+                // the paste without having to actually change
+                // the selection which would have side effects app-wide.
+
+                SelectedStateSnapshot forcedSelectedState = new SelectedStateSnapshot
+                {
+                    SelectedElement = targetElementSave,
+                    SelectedStateSave = targetElementSave.DefaultState,
+                    SelectedInstance = targetInstanceSave
+                };
+
+                //var forcedSelectedState = _selectedState;
+
+                var newInstances = _copyPasteLogic.PasteInstanceSaves(instances,
                     stateWithVariablesForOriginalInstance,
-                    targetElementSave, targetInstanceSave);
+                    targetElementSave,
+                    targetInstanceSave,
+                    forcedSelectedState);
+
+                // January 17, 2025
+                // For now, let's just
+                // handle the most common
+                // case - dropping a single
+                // instance. We can handle multiples
+                // later, but this is a rarer case and
+                // this bug fix has already dragged on too
+                // long. The unit test for one case is here:
+                // DragDropManagerTests.OnNodeSortingDropped_DropInstance_ShouldInsertAtIndex_OnDifferentElement
+                var firstInstance = newInstances.FirstOrDefault();
+                if(firstInstance != null && targetElementSave.Instances.IndexOf(firstInstance) != index)
+                {
+                    targetElementSave.Instances.Remove(firstInstance);
+                    targetElementSave.Instances.Insert(index, firstInstance);
+
+                    _reorderLogic.RefreshInResponseToReorder(firstInstance);
+                }
+
+                _selectedState.SelectedInstances = newInstances;
             }
         }
         else if(targetObject is BehaviorSave asBehaviorSave)
@@ -489,13 +521,12 @@ public class DragDropManager
 
     private void HandleDroppingInstanceOnBehaviorSave(InstanceSave draggedAsInstanceSave, BehaviorSave asBehaviorSave)
     {
-        var behaviorInstanceSave = new BehaviorInstanceSave();
-        behaviorInstanceSave.Name = draggedAsInstanceSave.Name;
-        behaviorInstanceSave.BaseType = draggedAsInstanceSave.BaseType;
-        asBehaviorSave.RequiredInstances.Add(behaviorInstanceSave);
-        _guiCommands.RefreshElementTreeView();
-        _fileCommands.TryAutoSaveBehavior(asBehaviorSave);
+        // Capture the pre-change state for undo (bypasses the undo lock held by OnNodeSortingDropped).
+        _undoManager.RecordBehaviorState(asBehaviorSave);
 
+        _selectedState.SelectedBehavior = asBehaviorSave;
+
+        _elementCommands.AddInstance(asBehaviorSave, draggedAsInstanceSave.Name, draggedAsInstanceSave.BaseType);
     }
 
     private void HandleDroppingInstanceOnTarget(object targetObject, InstanceSave dragDroppedInstance, ElementSave targetElementSave, ITreeNode targetTreeNode, int index)
@@ -528,7 +559,7 @@ public class DragDropManager
                 {
                     var instanceParent = targetElementSave.DefaultState.GetVariableRecursive(instance.Name + ".Parent")?.Value;
 
-                    if (instanceParent is string instanceParentAsString && 
+                    if (instanceParent is string instanceParentAsString &&
                         (instanceParentAsString == parentName || instanceParentAsString?.StartsWith($"{parentName}.") == true))
                     {
                         siblings.Add(instance);
@@ -583,19 +614,14 @@ public class DragDropManager
 
             var oldValue = stateToAssignOn.GetValue(variableName) as string;
             stateToAssignOn.SetValue(variableName, parentName, "string");
-            
+
 
             _setVariableLogic.PropertyValueChanged("Parent", oldValue, dragDroppedInstance, targetElementSave?.DefaultState);
             targetTreeNode?.Expand();
         }
     }
 
-    internal void ClearDraggedItem()
-    {
-        mDraggedItem = null;
-    }
-
-    internal void HandleKeyPress(KeyPressEventArgs e)
+    public void HandleKeyPress(KeyPressEventArgs e)
     {
         int m = 3;
     }
@@ -604,7 +630,7 @@ public class DragDropManager
 
     #region General Functions
 
-    internal bool ValidateNodeSorting(IEnumerable<ITreeNode> draggedNodes, ITreeNode targetNode, int index)
+    public bool ValidateNodeSorting(IEnumerable<ITreeNode> draggedNodes, ITreeNode targetNode, int index)
     {
         if (targetNode == null) return false;
 
@@ -712,11 +738,20 @@ public class DragDropManager
         return false;
     }
 
-    internal void OnNodeSortingDropped(IEnumerable<ITreeNode> draggedNodes, ITreeNode targetNode, int index)
+    public void OnNodeSortingDropped(IEnumerable<ITreeNode> draggedNodes, ITreeNode targetNode, int index)
     {
-        IEnumerable<object> tags = draggedNodes
+        // Sort InstanceSaves by descending index in their parent container so that,
+        // as each item is inserted at the target position, the final relative order
+        // matches the original order. Non-InstanceSave objects sort last.
+        var tags = draggedNodes
             .Where(n => n.Tag != null)
-            .Select(n => n.Tag);
+            .Select(n => n.Tag)
+            .OrderByDescending(tag => tag is InstanceSave instance
+                ? instance.ParentContainer?.Instances.IndexOf(instance) ?? int.MinValue
+                : int.MinValue)
+            .ToList();
+
+        using var undoLock = _undoManager.RequestLock();
 
         foreach (object draggedObject in tags)
         {
@@ -724,7 +759,7 @@ public class DragDropManager
         }
     }
 
-    internal void OnFilesDroppedInTreeView(string[] files)
+    public void OnFilesDroppedInTreeView(string[] files)
     {
         var targetTreeNode = _pluginManager.GetTreeNodeOver();
 
@@ -765,10 +800,10 @@ public class DragDropManager
 
     public void OnNodeObjectDroppedInWireframe(object draggedObject)
     {
-        ElementSave draggedAsElementSave = draggedObject as ElementSave;                    
+        ElementSave? draggedAsElementSave = draggedObject as ElementSave;
         ElementSave? target = _wireframeObjectManager.ElementShowing;
 
-        // Depending on how fast the user clicks the UI may think they dragged an instance rather than 
+        // Depending on how fast the user clicks the UI may think they dragged an instance rather than
         // an element, so let's protect against that with this null check.
         if (draggedAsElementSave != null && target is not null)
         {
@@ -792,7 +827,7 @@ public class DragDropManager
         }
     }
 
-    public void OnWireframeDragEnter(object sender, DragEventArgs e)
+    public void OnWireframeDragEnter(object? sender, DragEventArgs e)
     {
         var canDropFile =
             _selectedState.SelectedStandardElement == null &&    // Don't allow dropping on standard elements
@@ -827,8 +862,8 @@ public class DragDropManager
         float containerLeft = 0;
         float containerTop = 0;
 
-        float containerWidth = ProjectState.Self.GumProjectSave.DefaultCanvasWidth;
-        float containerHeight = ProjectState.Self.GumProjectSave.DefaultCanvasHeight;
+        float containerWidth = _projectState.GumProjectSave.DefaultCanvasWidth;
+        float containerHeight = _projectState.GumProjectSave.DefaultCanvasHeight;
 
         if (component != null)
         {
@@ -838,7 +873,7 @@ public class DragDropManager
 
             containerWidth = runtime.Width;
             containerHeight = runtime.Height;
-            
+
         }
         else
         {

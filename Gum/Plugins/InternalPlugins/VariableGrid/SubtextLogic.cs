@@ -1,5 +1,4 @@
-﻿using Gum.DataTypes.ComponentModel;
-using Gum.DataTypes.Variables;
+﻿using Gum.DataTypes.Variables;
 using Gum.DataTypes;
 using Gum.Managers;
 using System;
@@ -13,25 +12,25 @@ namespace Gum.Plugins.InternalPlugins.VariableGrid;
 public class SubtextLogic
 {
     /// <summary>
-    /// Sets the property's subtext according to the initial subtext passed to the method plus any additional
+    /// Returns the subtext for a property based on the initial subtext plus any additional
     /// subtext as determined by the method.
     /// </summary>
-    /// <param name="defaultVariable">The default variable, which is the variable as defined in the StandardElementsManager. This may not have the same name as the 
+    /// <param name="defaultVariable">The default variable, which is the variable as defined in the StandardElementsManager. This may not have the same name as the
     /// actual variable being displayed if it's exposed</param>
     /// <param name="subtext"></param>
-    /// <param name="property"></param>
+    /// <param name="propertyName">The root name of the property being displayed</param>
     /// <param name="elementSave">The element if no instance is specified, or the base type of the argument instance</param>
     /// <param name="instanceSave"></param>
-    public void GetDefaultSubtext(VariableSave defaultVariable, 
-        string subtext, 
-        InstanceSavePropertyDescriptor property, 
-        ElementSave elementSave, 
+    public string GetDefaultSubtext(VariableSave defaultVariable,
+        string subtext,
+        string propertyName,
+        ElementSave elementSave,
         InstanceSave instanceSave)
     {
-        property.Subtext = subtext;
+        string result = subtext;
         if (!string.IsNullOrEmpty(defaultVariable?.DetailText))
         {
-            property.Subtext += "\n" + defaultVariable.DetailText;
+            result += "\n" + defaultVariable.DetailText;
         }
 
         string? categoryString = null;
@@ -43,7 +42,7 @@ public class SubtextLogic
 
         if(variableOwner != null)
         {
-            var nameToSearchFor = instanceSave == null ? property.Name : instanceSave.Name + "." + property.Name;
+            var nameToSearchFor = instanceSave == null ? propertyName : instanceSave.Name + "." + propertyName;
             var variableInOwner = variableOwner.DefaultState.GetVariableSave(nameToSearchFor);
 
 
@@ -74,30 +73,14 @@ public class SubtextLogic
 
         if(categoryString != null)
         {
-            if(!string.IsNullOrEmpty(property.Subtext))
+            if(!string.IsNullOrEmpty(result))
             {
-                property.Subtext += "\n";
+                result += "\n";
             }
-            property.Subtext += categoryString;
+            result += categoryString;
         }
 
-        if (defaultVariable.Name == "HasEvents")
-        {
-            var element = elementSave;
-            if (instanceSave != null)
-            {
-                element = ObjectFinder.Self.GetElementSave(instanceSave);
-            }
-
-            if (element is StandardElementSave)
-            {
-                if (!string.IsNullOrEmpty(property.Subtext))
-                {
-                    property.Subtext += "\n";
-                }
-                property.Subtext += "Assigns Cursor.WindowOver only if events are assigned at runtime";
-            }
-        }
+        return result;
     }
 
 

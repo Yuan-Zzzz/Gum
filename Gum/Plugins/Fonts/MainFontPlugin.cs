@@ -5,6 +5,7 @@ using Gum.Services;
 using Gum.ToolStates;
 using System;
 using System.ComponentModel.Composition;
+using System.Windows;
 using System.Threading.Tasks;
 using Gum.Services.Dialogs;
 using System.Diagnostics;
@@ -19,12 +20,14 @@ public class MainFontPlugin : InternalPlugin
     private readonly IGuiCommands _guiCommands;
     private readonly FontManager _fontManager;
     private readonly IDialogService _dialogService;
+    private readonly IProjectState _projectState;
 
     public MainFontPlugin()
     {
         _guiCommands = Locator.GetRequiredService<IGuiCommands>();
         _fontManager = Locator.GetRequiredService<FontManager>();
         _dialogService = Locator.GetRequiredService<IDialogService>();
+        _projectState = Locator.GetRequiredService<IProjectState>();
     }
 
     public override void StartUp()
@@ -60,10 +63,10 @@ public class MainFontPlugin : InternalPlugin
     private async void HandleProjectLoaded(GumProjectSave save)
     {
         await _fontManager.CreateAllMissingFontFiles(
-            ProjectState.Self.GumProjectSave);
+            _projectState.GumProjectSave);
     }
 
-    private void HandleClearFontCache(object sender, EventArgs e)
+    private void HandleClearFontCache(object? sender, System.Windows.RoutedEventArgs e)
     {
         try
         {
@@ -75,7 +78,7 @@ public class MainFontPlugin : InternalPlugin
         }
     }
 
-    private void HandleViewFontCache(object sender, EventArgs e)
+    private void HandleViewFontCache(object? sender, System.Windows.RoutedEventArgs e)
     {
         if(!System.IO.Directory.Exists(_fontManager.AbsoluteFontCacheFolder))
         {
@@ -93,7 +96,7 @@ public class MainFontPlugin : InternalPlugin
 
     private async Task HandleRefreshFontCache(bool forceRecreate)
     {
-        var gumProjectSave = ProjectState.Self.GumProjectSave;
+        var gumProjectSave = _projectState.GumProjectSave;
         if(gumProjectSave == null)
         {
             _dialogService.ShowMessage(
@@ -103,7 +106,7 @@ public class MainFontPlugin : InternalPlugin
         {
             var before = DateTime.Now;
             await _fontManager.CreateAllMissingFontFiles(
-                ProjectState.Self.GumProjectSave, forceRecreate:forceRecreate);
+                _projectState.GumProjectSave, forceRecreate:forceRecreate);
             var after = DateTime.Now;
 
             var difference = after - before;

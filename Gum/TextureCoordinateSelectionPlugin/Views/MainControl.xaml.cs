@@ -33,19 +33,34 @@ namespace TextureCoordinateSelectionPlugin.Views
             InnerControl.DisableHotkeyPanning();
         }
 
-        private void HandleKeyDown(object sender, KeyEventArgs e)
+        private void HandleKeyDown(object? sender, KeyEventArgs e)
         {
             ImageRegionKeyDown?.Invoke(null, e);
         }
 
-        private void HandleMinusClicked(object sender, RoutedEventArgs e)
+        private void HandleMinusClicked(object? sender, RoutedEventArgs e)
         {
             ViewModel.ZoomOut();
         }
 
-        private void HandlePlusClicked(object sender, RoutedEventArgs e)
+        private void HandlePlusClicked(object? sender, RoutedEventArgs e)
         {
             ViewModel.ZoomIn();
+        }
+
+        private const double DefaultBaseFontSize = 12.0;
+        private const double DefaultMinWidth = 24.0;
+
+        internal void UpdateButtonSizes(double baseFontSize)
+        {
+            double scale = baseFontSize / DefaultBaseFontSize;
+            double minWidth = DefaultMinWidth * scale;
+
+            MinusButton.MinWidth = minWidth;
+            MinusButton.FontSize = baseFontSize;
+
+            PlusButton.MinWidth = minWidth;
+            PlusButton.FontSize = baseFontSize;
         }
     }
 }

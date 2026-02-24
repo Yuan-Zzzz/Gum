@@ -26,7 +26,7 @@ using Gum.Commands;
 using CommunityToolkit.Mvvm.Messaging;
 using Gum.Services.Dialogs;
 using Gum.Undo;
-using Gum.Plugins.Errors;
+using Gum.Localization;
 
 namespace Gum.Plugins;
 
@@ -58,9 +58,7 @@ public class PluginManager : IPluginManager
     private const String CompatibilityFileName = "Compatibility.txt";
     
     static PluginManager mGlobalInstance;
-    static PluginManager mProjectInstance;
     static List<PluginManager> mInstances = new List<PluginManager>();
-    private bool mGlobal;
 
     private IGuiCommands _guiCommands;
     private IMessenger _messenger;
@@ -108,8 +106,8 @@ public class PluginManager : IPluginManager
         }
     }
 
-    [Export("LocalizationManager")]
-    public LocalizationManager LocalizationManager => Locator.GetRequiredService<LocalizationManager>();
+    [Export("LocalizationService")]
+    public LocalizationService LocalizationService => Locator.GetRequiredService<LocalizationService>();
 
 
     internal static List<PluginContainer> AllPluginContainers
@@ -131,19 +129,11 @@ public class PluginManager : IPluginManager
     {
         get { return mPluginContainers; }
     }
+
+    public bool IsInitialized => this.Plugins != null;
     #endregion
 
     #region Exported objects
-
-    public static PluginManager GetGlobal()
-    {
-        return mGlobalInstance;
-    }
-
-    public static PluginManager GetProject()
-    {
-        return mProjectInstance;
-    }
 
 
     public static List<PluginManager> GetInstances()
@@ -193,24 +183,25 @@ public class PluginManager : IPluginManager
 #endif
     }
 
-    internal void BeforeElementSave(ElementSave savedElement) => 
+    public void BeforeSavingElementSave(ElementSave savedElement) => 
         CallMethodOnPlugin(plugin => plugin.CallBeforeElementSave(savedElement));
 
-    internal void AfterElementSave(ElementSave savedElement) =>
+    public void AfterSavingElementSave(ElementSave savedElement) =>
         CallMethodOnPlugin(plugin => plugin.CallAfterElementSave(savedElement));
 
-    internal void BeforeProjectSave(GumProjectSave savedProject) =>
+    public void BeforeSavingProjectSave(GumProjectSave savedProject) =>
         CallMethodOnPlugin(plugin => plugin.CallBeforeProjectSave(savedProject));
 
-    internal void ProjectLoad(GumProjectSave newlyLoadedProject) =>
+    public void ProjectLoad(GumProjectSave newlyLoadedProject) =>
         CallMethodOnPlugin(plugin => plugin.CallProjectLoad(newlyLoadedProject));
 
     public void ProjectPropertySet(string propertyName) =>
         CallMethodOnPlugin(plugin => plugin.CallProjectPropertySet(propertyName));
-    internal void ProjectSave(GumProjectSave savedProject) =>
+
+    public void ProjectSave(GumProjectSave savedProject) =>
         CallMethodOnPlugin(plugin => plugin.CallProjectSave(savedProject));
 
-    internal GraphicalUiElement CreateGraphicalUiElement(ElementSave elementSave)
+    public GraphicalUiElement CreateGraphicalUiElement(ElementSave elementSave)
     {
         GraphicalUiElement toReturn = null;
         CallMethodOnPlugin(plugin =>
@@ -225,16 +216,16 @@ public class PluginManager : IPluginManager
         return toReturn;
     }
 
-    internal void ProjectLocationSet(FilePath filePath) =>
+    public void ProjectLocationSet(FilePath filePath) =>
         CallMethodOnPlugin(plugin => plugin.CallProjectLocationSet(filePath));
 
-    internal void Export(ElementSave elementToExport) =>
+    public void Export(ElementSave elementToExport) =>
         CallMethodOnPlugin(plugin => plugin.CallExport(elementToExport));
 
-    internal void ModifyDefaultStandardState(string type, StateSave stateSave) =>
+    public void ModifyDefaultStandardState(string type, StateSave stateSave) =>
         CallMethodOnPlugin(plugin => plugin.CallAddAndRemoveVariablesForType(type, stateSave));
 
-    internal bool TryHandleDelete()
+    public bool TryHandleDelete()
     {
         bool toReturn = false;
 
@@ -274,86 +265,89 @@ public class PluginManager : IPluginManager
     /// </summary>
     /// <param name="window">The window to modify.</param>
     /// <param name="objectsToDelete">An array of objects that may be deleted, which could be any Gum type.</param>
-    internal void ShowDeleteDialog(DeleteOptionsWindow window, Array objectsToDelete) =>
+    public void ShowDeleteDialog(DeleteOptionsWindow window, Array objectsToDelete) =>
         CallMethodOnPlugin(plugin => plugin.CallDeleteOptionsWindowShow(window, objectsToDelete));
 
-    internal void DeleteConfirm(DeleteOptionsWindow window, Array objectsToDelete) => 
+    public void DeleteConfirm(DeleteOptionsWindow window, Array objectsToDelete) => 
         CallMethodOnPlugin(plugin => plugin.CallDeleteConfirm(window, objectsToDelete));
 
-    internal void ElementRename(ElementSave elementSave, string oldName) =>
+    public void ElementRename(ElementSave elementSave, string oldName) =>
         CallMethodOnPlugin(plugin => plugin.CallElementRename(elementSave, oldName));
 
-    internal void ElementAdd(ElementSave element) =>
+    public void ElementAdd(ElementSave element) =>
         CallMethodOnPlugin(plugin => plugin.CallElementAdd(element));
 
-    internal void ElementDelete(ElementSave element) =>
+    public void ElementDelete(ElementSave element) =>
         CallMethodOnPlugin(plugin => plugin.CallElementDelete(element));
 
-    internal void ElementDuplicate(ElementSave oldElement, ElementSave newElement) =>
+    public void ElementDuplicate(ElementSave oldElement, ElementSave newElement) =>
         CallMethodOnPlugin(plugin => plugin.CallElementDuplicate(oldElement, newElement));
 
-    internal void StateRename(StateSave stateSave, string oldName) => 
+    public void ElementReloaded(ElementSave element) =>
+        CallMethodOnPlugin(plugin => plugin.CallElementReloaded(element));
+
+    public void StateRename(StateSave stateSave, string oldName) => 
         CallMethodOnPlugin(plugin => plugin.CallStateRename(stateSave, oldName));
 
-    internal void StateAdd(StateSave stateSave) =>
+    public void StateAdd(StateSave stateSave) =>
         CallMethodOnPlugin((plugin) => plugin.CallStateAdd(stateSave));
 
-    internal void StateMovedToCategory(StateSave stateSave, StateSaveCategory newCategory, StateSaveCategory oldCategory) =>
+    public void StateMovedToCategory(StateSave stateSave, StateSaveCategory newCategory, StateSaveCategory oldCategory) =>
         CallMethodOnPlugin(plugin => plugin.CallStateMovedToCategory(stateSave, newCategory, oldCategory));
 
-    internal void StateDelete(StateSave stateSave) =>
+    public void StateDelete(StateSave stateSave) =>
         CallMethodOnPlugin((plugin) => plugin.CallStateDelete(stateSave));
 
-    internal void ReactToStateSaveSelected(StateSave? stateSave) =>
+    public void ReactToStateSaveSelected(StateSave? stateSave) =>
         CallMethodOnPlugin((plugin) => plugin.CallReactToStateSaveSelected(stateSave));
 
-    internal void ReactToCustomStateSaveSelected(StateSave stateSave) =>
+    public void ReactToCustomStateSaveSelected(StateSave stateSave) =>
         CallMethodOnPlugin((plugin) => plugin.CallReactToCustomStateSaveSelected(stateSave));
 
-    internal void RefreshStateTreeView() =>
+    public void RefreshStateTreeView() =>
         CallMethodOnPlugin(plugin => plugin.CallRefreshStateTreeView());
 
     public void RefreshElementTreeView(IInstanceContainer? instanceContainer = null) =>
         CallMethodOnPlugin(plugin => plugin.CallRefreshElementTreeView(instanceContainer));
 
 
-    internal void CategoryRename(StateSaveCategory category, string oldName) =>
+    public void CategoryRename(StateSaveCategory category, string oldName) =>
         CallMethodOnPlugin((plugin) => plugin.CallStateCategoryRename(category, oldName));
 
-    internal void CategoryAdd(StateSaveCategory category) =>
+    public void CategoryAdd(StateSaveCategory category) =>
         CallMethodOnPlugin((plugin) => plugin.CallStateCategoryAdd(category));
 
-    internal void CategoryDelete(StateSaveCategory category) =>
+    public void CategoryDelete(StateSaveCategory category) =>
         CallMethodOnPlugin((plugin) => plugin.CallStateCategoryDelete(category));
 
-    internal void ReactToStateSaveCategorySelected(StateSaveCategory? category) =>
+    public void ReactToStateSaveCategorySelected(StateSaveCategory? category) =>
         CallMethodOnPlugin((plugin) => plugin.CallReactToStateSaveCategorySelected(category));
 
-    internal void VariableAdd(ElementSave elementSave, string variableName) =>
+    public void VariableAdd(ElementSave elementSave, string variableName) =>
         CallMethodOnPlugin((plugin) => plugin.CallVariableAdd(elementSave, variableName));
 
-    internal void VariableDelete(ElementSave elementSave, string variableName) =>
+    public void VariableDelete(ElementSave elementSave, string variableName) =>
         CallMethodOnPlugin(plugin => plugin.CallVariableDelete(elementSave, variableName));
 
-    public void VariableSet(ElementSave parentElement, InstanceSave? instance, string changedMember, object? oldValue)
+    public void VariableSet(ElementSave parentElement, InstanceSave? instance, string unqualifiedChangedMemberName, object? oldValue)
     {
-        CallMethodOnPlugin(plugin => plugin.CallVariableSet(parentElement, instance, changedMember, oldValue));
-        CallMethodOnPlugin(plugin => plugin.CallVariableSetLate(parentElement, instance, changedMember, oldValue), "VariableSet (Late)");
+        CallMethodOnPlugin(plugin => plugin.CallVariableSet(parentElement, instance, unqualifiedChangedMemberName, oldValue));
+        CallMethodOnPlugin(plugin => plugin.CallVariableSetLate(parentElement, instance, unqualifiedChangedMemberName, oldValue), "VariableSet (Late)");
     }
 
-    internal void VariableSelected(IStateContainer container, VariableSave variable) =>
+    public void VariableSelected(IStateContainer container, VariableSave variable) =>
         CallMethodOnPlugin(plugin => plugin.CallVariableSelected(container, variable));
 
-    internal void VariableRemovedFromCategory(string variableName, StateSaveCategory category) =>
+    public void VariableRemovedFromCategory(string variableName, StateSaveCategory category) =>
         CallMethodOnPlugin(plugin => plugin.CallVariableRemovedFromCategory(variableName, category));
 
-    internal void InstanceRename(ElementSave element, InstanceSave instanceSave, string oldName) =>
+    public void InstanceRename(ElementSave element, InstanceSave instanceSave, string oldName) =>
         CallMethodOnPlugin(plugin => plugin.CallInstanceRename(element, instanceSave, oldName));
             
-    internal void AfterUndo() =>
+    public void AfterUndo() =>
         CallMethodOnPlugin(plugin => plugin.CallAfterUndo());
 
-    internal List<Attribute> GetAttributesFor(VariableSave variableSave)
+    public List<Attribute> GetAttributesFor(VariableSave variableSave)
     {
         var listToFill = new List<Attribute>();
         CallMethodOnPlugin(plugin => plugin.CallFillVariableAttributes(variableSave, listToFill));
@@ -361,16 +355,16 @@ public class PluginManager : IPluginManager
     }
 
 
-    internal void ElementSelected(ElementSave? elementSave) =>
+    public void ElementSelected(ElementSave? elementSave) =>
         CallMethodOnPlugin(plugin => plugin.CallElementSelected(elementSave));
 
-    internal void TreeNodeSelected(TreeNode treeNode) =>
+    internal void TreeNodeSelected(TreeNode? treeNode) =>
         CallMethodOnPlugin(plugin => plugin.CallTreeNodeSelected(treeNode));
 
     internal void StateWindowTreeNodeSelected(TreeNode treeNode) =>
         CallMethodOnPlugin(plugin => plugin.CallStateWindowTreeNodeSelected(treeNode));
 
-    internal ITreeNode? GetTreeNodeOver()
+    public ITreeNode? GetTreeNodeOver()
     {
         ITreeNode? treeNodeOver = null;
 
@@ -387,7 +381,7 @@ public class PluginManager : IPluginManager
         return treeNodeOver;
     }
 
-    internal IEnumerable<ITreeNode> GetSelectedNodes()
+    public IEnumerable<ITreeNode> GetSelectedNodes()
     {
         IEnumerable<ITreeNode>? toReturn = null;
         CallMethodOnPlugin(plugin =>
@@ -401,21 +395,21 @@ public class PluginManager : IPluginManager
         return toReturn ?? Enumerable.Empty<ITreeNode>();
     }
 
-    internal void BehaviorSelected(BehaviorSave? behaviorSave) =>
+    public void BehaviorSelected(BehaviorSave? behaviorSave) =>
         CallMethodOnPlugin(plugin => plugin.CallBehaviorSelected(behaviorSave));
 
-    internal void BehaviorReferenceSelected(ElementBehaviorReference behaviorReference, ElementSave elementSave) =>
+    public void BehaviorReferenceSelected(ElementBehaviorReference behaviorReference, ElementSave elementSave) =>
         CallMethodOnPlugin(plugin => plugin.CallBehaviorReferenceSelected(behaviorReference, elementSave));
 
-    internal void BehaviorVariableSelected(VariableSave variable) =>
+    public void BehaviorVariableSelected(VariableSave variable) =>
         CallMethodOnPlugin(plugin => plugin.CallBehaviorVariableSelected(variable));
-    internal void BehaviorCreated(BehaviorSave behavior) =>
+    public void BehaviorCreated(BehaviorSave behavior) =>
         CallMethodOnPlugin(plugin => plugin.CallBehaviorCreated(behavior));
 
-    internal void BehaviorDeleted(BehaviorSave behavior) =>
+    public void BehaviorDeleted(BehaviorSave behavior) =>
         CallMethodOnPlugin(plugin => plugin.CallBehaviorDeleted(behavior));
 
-    internal void InstanceSelected(ElementSave elementSave, InstanceSave instance) =>
+    public void InstanceSelected(ElementSave elementSave, InstanceSave instance) =>
         CallMethodOnPlugin(plugin => plugin.CallInstanceSelected(elementSave, instance));
 
     public virtual void InstanceAdd(ElementSave elementSave, InstanceSave instance) =>
@@ -428,18 +422,21 @@ public class PluginManager : IPluginManager
     public virtual void InstancesDelete(ElementSave elementSave, InstanceSave[] instances) =>
         CallMethodOnPlugin(plugin => plugin.CallInstancesDelete(elementSave, instances));
 
-    internal StateSave? GetDefaultStateFor(string type)
+    public void BehaviorInstanceAdd(BehaviorSave behavior, BehaviorInstanceSave instance) =>
+        CallMethodOnPlugin(plugin => plugin.CallBehaviorInstanceAdd(behavior, instance));
+
+    public StateSave? GetDefaultStateFor(string type)
     {
         StateSave? toReturn = null;
         CallMethodOnPlugin(plugin => toReturn = plugin.CallGetDefaultStateFor(type) ?? toReturn);
         return toReturn;
     }
 
-    internal void InstanceReordered(InstanceSave instance) =>
+    public void InstanceReordered(InstanceSave instance) =>
         CallMethodOnPlugin(plugin => plugin.CallInstanceReordered(instance));
     
 
-    internal bool GetIfExtensionIsValid(string extension, ElementSave parentElement, InstanceSave instance, string changedMember)
+    public bool GetIfExtensionIsValid(string extension, ElementSave parentElement, InstanceSave instance, string changedMember)
     {
         bool toReturn = false;
         CallMethodOnPlugin(plugin =>
@@ -454,7 +451,7 @@ public class PluginManager : IPluginManager
         return toReturn;
     }
 
-    internal void RefreshBehaviorView(ElementSave elementSave) =>
+    public void RefreshBehaviorView(ElementSave elementSave) =>
         CallMethodOnPlugin(plugin => plugin.CallRefreshBehaviorUi());
 
     internal void RefreshVariableView(bool force) =>
@@ -588,8 +585,11 @@ public class PluginManager : IPluginManager
         CallMethodOnPlugin(plugin => plugin.CallReactToFileChanged(filePath));
     
 
-    public void SetHighlightedIpso(IPositionedSizedObject positionedSizedObject) =>
+    public void SetHighlightedIpso(IPositionedSizedObject? positionedSizedObject) =>
         CallMethodOnPlugin(plugin => plugin.CallSetHighlightedIpso(positionedSizedObject));
+
+    public void HighlightTreeNode(IPositionedSizedObject? positionedSizedObject) =>
+        CallMethodOnPlugin(plugin => plugin.CallHighlightTreeNode(positionedSizedObject));
 
     public void IpsoSelected(IPositionedSizedObject? positionedSizedObject) =>
         CallMethodOnPlugin(plugin => plugin.CallIpsoSelected(positionedSizedObject));
@@ -670,6 +670,28 @@ public class PluginManager : IPluginManager
     public void FocusSearch() =>
         CallMethodOnPlugin(plugin => plugin.CallFocusSearch());
 
+    public bool ShouldExclude(VariableSave defaultVariable, RecursiveVariableFinder rvf)
+    {
+        bool shouldExclude = false;
+        foreach (var plugin in this.Plugins.Where(item=>this.PluginContainers[item].IsEnabled))
+        {
+            PluginContainer container = this.PluginContainers[plugin];
+
+            if (container.Plugin is PluginBase pluginBase)
+            {
+
+                try
+                {
+                    shouldExclude |= pluginBase.GetIfVariableIsExcluded(defaultVariable, rvf);
+                }
+                catch (Exception e)
+                {
+                    container.Fail(e, "Failed in GetIfVariableIsExcluded");
+                }
+            }
+        }
+        return shouldExclude;
+    }
     #endregion
 
 
@@ -842,7 +864,7 @@ public class PluginManager : IPluginManager
 
 
 
-    private Assembly currentDomain_AssemblyResolve(object sender, ResolveEventArgs args)
+    private Assembly currentDomain_AssemblyResolve(object? sender, ResolveEventArgs args)
     {
         foreach (Assembly item in mExternalAssemblies)
         {
@@ -1028,14 +1050,6 @@ public class PluginManager : IPluginManager
         }
     }
 
-
-    private static bool ShouldProcessPluginManager(PluginCategories pluginCategories, PluginManager pluginManager)
-    {
-        return (pluginManager.mGlobal && (pluginCategories & PluginCategories.Global) == PluginCategories.Global) ||
-                            (!pluginManager.mGlobal && (pluginCategories & PluginCategories.ProjectSpecific) == PluginCategories.ProjectSpecific);
-    }
-
-
     public static bool ShutDownPlugin(IPlugin pluginToShutDown)
     {
         return ShutDownPlugin(pluginToShutDown, PluginShutDownReason.PluginInitiated);
@@ -1045,21 +1059,17 @@ public class PluginManager : IPluginManager
         PluginShutDownReason shutDownReason)
     {
         bool doesPluginWantToShutDown = true;
-        PluginContainer container;
+        PluginContainer? container = null;
 
         if (mGlobalInstance.mPluginContainers.ContainsKey(pluginToShutDown))
         {
             container = mGlobalInstance.mPluginContainers[pluginToShutDown];
         }
-        else
-        {
-            container = mProjectInstance.mPluginContainers[pluginToShutDown];
-        }
 
         try
         {
             doesPluginWantToShutDown =
-                container.Plugin.ShutDown(shutDownReason);
+                container?.Plugin.ShutDown(shutDownReason) ?? false;
         }
         catch (Exception)
         {
@@ -1069,7 +1079,7 @@ public class PluginManager : IPluginManager
 
         if (doesPluginWantToShutDown)
         {
-            container.IsEnabled = false;
+            container!.IsEnabled = false;
         }
 
         if (shutDownReason == PluginShutDownReason.UserDisabled)
@@ -1097,26 +1107,4 @@ public class PluginManager : IPluginManager
 
     #endregion
 
-    internal bool ShouldExclude(VariableSave defaultVariable, RecursiveVariableFinder rvf)
-    {
-        bool shouldExclude = false;
-        foreach (var plugin in this.Plugins.Where(item=>this.PluginContainers[item].IsEnabled))
-        {
-            PluginContainer container = this.PluginContainers[plugin];
-
-            if (container.Plugin is PluginBase pluginBase)
-            {
-
-                try
-                {
-                    shouldExclude |= pluginBase.GetIfVariableIsExcluded(defaultVariable, rvf);
-                }
-                catch (Exception e)
-                {
-                    container.Fail(e, "Failed in GetIfVariableIsExcluded");
-                }
-            }
-        }
-        return shouldExclude;
-    }
 }

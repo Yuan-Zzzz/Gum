@@ -21,6 +21,7 @@ public class CategorySortAndColorLogic
 
     List<CategoryColor> OrderedCategories = new List<CategoryColor>
     {
+        new CategoryColor { Name = "General", Color = $"#{alphaHex}4300FF" },
         new CategoryColor { Name = "Position", Color = $"#{alphaHex}0000FF" },
         new CategoryColor { Name = "Dimensions", Color = $"#{alphaHex}0090FF" },
         new CategoryColor { Name = "Text", Color = $"#{alphaHex}00F6FF" },
@@ -35,13 +36,14 @@ public class CategorySortAndColorLogic
         new CategoryColor { Name = "Dropshadow", Color = $"#{alphaHex}00B6FF" },
         new CategoryColor { Name = "Stroke and Fill", Color = $"#{alphaHex}00FF83" },
         new CategoryColor { Name = "Behavior", Color = $"#{alphaHex}2EFF00" },
+        new CategoryColor { Name = "References", Color = $"#{alphaHex}90FF00" }, // yellow-green
     };
 
     public List<MemberCategory> SortAndColorCategories(List<MemberCategory> categories)
     {
         int GetDesiredIndex(string category)
         {
-            if (string.IsNullOrEmpty(category))
+            if (string.IsNullOrEmpty(category) || category == "General")
             {
                 return -1;
             }

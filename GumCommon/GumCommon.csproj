@@ -11,7 +11,7 @@
 		<PackageId>FlatRedBall.GumCommon</PackageId>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 
-		<Version>2026.1.3.1</Version>
+		<Version>2026.2.23.1</Version>
 
 
 
@@ -41,6 +41,7 @@
 		<Compile Include="..\GumDataTypes\CustomPropertySave.cs" Link="DataTypes\CustomPropertySave.cs" />
 		<Compile Include="..\GumDataTypes\DimensionUnitType.cs" Link="DataTypes\DimensionUnitType.cs" />
 		<Compile Include="..\GumDataTypes\ElementReference.cs" Link="DataTypes\ElementReference.cs" />
+		<Compile Include="..\GumDataTypes\Serialization\VariableSaveSerializer.cs" Link="DataTypes\VariableSaveSerializer.cs" />
 		<Compile Include="..\GumDataTypes\ElementSave.cs" Link="DataTypes\ElementSave.cs" />
 		<Compile Include="..\GumDataTypes\EventSave.cs" Link="DataTypes\EventSave.cs" />
 		<Compile Include="..\GumDataTypes\GuideRectangle.cs" Link="DataTypes\GuideRectangle.cs" />
@@ -88,7 +89,7 @@
 		<Compile Include="..\RenderingLibrary\Graphics\RenderableBase.cs" Link="RenderingLibrary\RenderableBase.cs" />
 		<Compile Include="..\RenderingLibrary\Graphics\RendererSettings.cs" Link="RenderingLibrary\RendererSettings.cs" />
 		<Compile Include="..\RenderingLibrary\ISystemManagers.cs" Link="RenderingLibrary\ISystemManagers.cs" />
-		<Compile Include="..\SkiaGum\Content\LoaderManager.cs" Link="Content\LoaderManager.cs" />
+		<Compile Include="..\Runtimes\SkiaGum\Content\LoaderManager.cs" Link="Content\LoaderManager.cs" />
 		<Compile Include="..\ToolsUtilities\**\*.cs" Link="Utilities\%(RecursiveDir)%(Filename)%(Extension)" />
 	</ItemGroup>
 
@@ -206,6 +207,7 @@
 		</Compile>
 	</ItemGroup>
 	<ItemGroup>
+	  <PackageReference Include="CsvHelper" Version="33.1.0" />
 	  <PackageReference Include="FlatRedBall.InterpolationCore" Version="2025.4.22.1" />
 	  <PackageReference Include="System.Numerics.Vectors" Version="4.5.0" />
 	</ItemGroup>

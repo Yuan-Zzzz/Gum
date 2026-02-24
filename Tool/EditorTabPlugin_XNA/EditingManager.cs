@@ -3,9 +3,11 @@ using Gum.DataTypes;
 using Gum.DataTypes.Variables;
 using Gum.Logic;
 using Gum.Managers;
+using Gum.Plugins.InternalPlugins.VariableGrid;
 using Gum.PropertyGridHelpers;
 using Gum.RenderingLibrary;
 using Gum.Services;
+using Gum.ToolCommands;
 using Gum.ToolStates;
 using GumRuntime;
 using InputLibrary;
@@ -16,31 +18,45 @@ using System.Linq;
 
 namespace Gum.Wireframe;
 
-public partial class EditingManager
+public partial class EditingManager : IEditingManager
 {
     private readonly ISelectedState _selectedState;
-    private readonly ReorderLogic _reorderLogic;
-    private readonly WireframeObjectManager _wireframeObjectManager;
+    private readonly IReorderLogic _reorderLogic;
+    private readonly IWireframeObjectManager _wireframeObjectManager;
+    private readonly IElementCommands _elementCommands;
+    private readonly INameVerifier _nameVerifier;
+    private readonly ISetVariableLogic _setVariableLogic;
+    private readonly ICircularReferenceManager _circularReferenceManager;
+    private readonly IFavoriteComponentManager _favoriteComponentManager;
 
-    public EditingManager(WireframeObjectManager wireframeObjectManager,
-        ReorderLogic reorderLogic)
+    public EditingManager(
+        IWireframeObjectManager wireframeObjectManager,
+        IReorderLogic reorderLogic,
+        IElementCommands elementCommands,
+        INameVerifier nameVerifier,
+        ISetVariableLogic setVariableLogic)
     {
         _selectedState = Locator.GetRequiredService<ISelectedState>();
         _reorderLogic = reorderLogic;
         _wireframeObjectManager = wireframeObjectManager;
+        _elementCommands = elementCommands;
+        _nameVerifier = nameVerifier;
+        _setVariableLogic = setVariableLogic;
+        _circularReferenceManager = Locator.GetRequiredService<ICircularReferenceManager>();
+        _favoriteComponentManager = Locator.GetRequiredService<IFavoriteComponentManager>();
     }
     #region Methods
 
-    public void Initialize(System.Windows.Forms.ContextMenuStrip contextMenuStrip)
+    public void Initialize(System.Windows.Controls.ContextMenu contextMenu)
     {
-        RightClickInitialize(contextMenuStrip);
+        RightClickInitialize(contextMenu);
     }
 
 
     public void RefreshPositionsAndScalesForInstance(InstanceSave instance, List<ElementWithState> elementStack)
     {
-        GraphicalUiElement ipso = _wireframeObjectManager.GetRepresentation(instance, elementStack);
-        ipso.UpdateLayout();
+        GraphicalUiElement? ipso = _wireframeObjectManager.GetRepresentation(instance, elementStack);
+        ipso?.UpdateLayout();
     }
 
 

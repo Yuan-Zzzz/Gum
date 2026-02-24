@@ -6,7 +6,7 @@
 		<Nullable>enable</Nullable>
 		<GeneratePackageOnBuild>True</GeneratePackageOnBuild>
 		<PackageId>Gum.raylib</PackageId>
-		<Version>2026.1.3.1</Version>
+		<Version>2026.2.23.1</Version>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 
 		<GenerateAssemblyInfo>false</GenerateAssemblyInfo>
@@ -111,9 +111,12 @@
 		<Compile Include="..\..\MonoGameGum\Forms\Window.cs" Link="Forms\Window.cs" />
 		<Compile Include="..\..\MonoGameGum\GueDeriving\ContainerRuntime.cs" Link="GueDeriving\ContainerRuntime.cs" />
 		<Compile Include="..\..\MonoGameGum\GumService.cs" Link="GumService.cs" />
+		<Compile Include="..\..\MonoGameGum\Input\Cursor.cs" Link="Input\Cursor.cs" />
+		<Compile Include="..\..\MonoGameGum\Input\CursorExtensions.cs" Link="Input\CursorExtensions.cs" />
 		<Compile Include="..\..\MonoGameGum\Input\KeyCombo.cs" Link="Input\KeyCombo.cs" />
 		<Compile Include="..\..\MonoGameGum\Renderables\RenderableCreator.cs" Link="Renderables\RenderableCreator.cs" />
 		<Compile Include="..\..\MonoGameGum\Threading\DeferredActionQueue.cs" Link="Threading\DeferredActionQueue.cs" />
+		<Compile Include="..\..\RenderingLibrary\Graphics\TextExtensions.cs" Link="Renderables\TextExtensions.cs" />
 		<Compile Include="..\..\MonoGameGum\Forms\DefaultFromFileVisuals\*.cs" Link="Forms\DefaultFromFileVisuals\%(Filename)%(Extension)" />
 	</ItemGroup>
 

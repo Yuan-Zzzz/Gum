@@ -1,5 +1,6 @@
 ﻿using Gum.DataTypes;
 using Gum.DataTypes.Behaviors;
+using Gum.Localization;
 using Gum.Logic.FileWatch;
 using Gum.Managers;
 using Gum.Plugins;
@@ -9,6 +10,7 @@ using Gum.ToolStates;
 using Gum.Undo;
 using Gum.Wireframe;
 using System;
+using System.IO;
 using System.Reflection;
 using System.Windows.Forms;
 using ToolsUtilities;
@@ -17,29 +19,36 @@ namespace Gum.Commands;
 
 public class FileCommands : IFileCommands
 {
-    private readonly LocalizationManager _localizationManager;
-    private readonly FileWatchManager _fileWatchManager;
+    private readonly LocalizationService _localizationService;
+    private readonly IFileWatchManager _fileWatchManager;
     private readonly ISelectedState _selectedState;
     private readonly Lazy<IUndoManager> _undoManager;
     private readonly IDialogService _dialogService;
     private readonly IGuiCommands _guiCommands;
     private readonly IOutputManager _outputManager;
+    private readonly IProjectManager _projectManager;
+    private readonly IProjectState _projectState;
 
-    public FileCommands(ISelectedState selectedState, 
-        Lazy<IUndoManager> undoManager, 
+    public FileCommands(ISelectedState selectedState,
+        Lazy<IUndoManager> undoManager,
         IDialogService dialogService,
         IGuiCommands guiCommands,
-        LocalizationManager localizationManager,
+        LocalizationService localizationService,
         IOutputManager outputManager,
-        FileWatchManager fileWatchManager)
+        IFileWatchManager fileWatchManager,
+        IProjectManager projectManager,
+        IProjectState projectState)
     {
         _selectedState = selectedState;
         _undoManager = undoManager;
         _dialogService = dialogService;
         _guiCommands = guiCommands;
-        _localizationManager = localizationManager;
+        _localizationService = localizationService;
         _fileWatchManager = fileWatchManager;
         _outputManager = outputManager;
+        _projectManager = projectManager;
+        _projectState = projectState;
+
     }
 
     /// <summary>
@@ -48,8 +57,42 @@ public class FileCommands : IFileCommands
 
     public FilePath? ProjectDirectory => FileManager.RelativeDirectory;
 
-    public void DeleteDirectory(FilePath directory) => 
+    public void DeleteDirectory(FilePath directory) =>
         FileManager.DeleteDirectory(directory.FullPath);
+
+    public void MoveToRecycleBin(FilePath filePath) =>
+        Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(filePath.FullPath,
+            Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
+            Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+
+    public string[] GetFiles(string path) => System.IO.Directory.GetFiles(path);
+
+    public string[] GetFiles(string path, string searchPattern, SearchOption searchOption) =>
+        System.IO.Directory.GetFiles(path, searchPattern, searchOption);
+
+    public string ReadAllText(string path) => System.IO.File.ReadAllText(path);
+
+    public void MoveDirectory(string source, string destination)
+    {
+        Directory.CreateDirectory(destination);
+
+        // Move files
+        foreach (string file in Directory.GetFiles(source))
+        {
+            string destFile = Path.Combine(destination, Path.GetFileName(file));
+            File.Move(file, destFile, overwrite: true); // .NET 6+
+        }
+
+        // Move subdirectories recursively
+        foreach (string dir in Directory.GetDirectories(source))
+        {
+            string destDir = Path.Combine(destination, Path.GetFileName(dir));
+            MoveDirectory(dir, destDir);
+        }
+
+        // Clean up empty source directory
+        Directory.Delete(source);
+    }
 
     public void SaveEmbeddedResource(Assembly assembly, string resourceName, string targetFileName) =>
                 FileManager.SaveEmbeddedResource(assembly, resourceName, targetFileName);
@@ -74,7 +117,7 @@ public class FileCommands : IFileCommands
 
     public void TryAutoSaveElement(ElementSave? elementSave)
     {
-        if (ProjectManager.Self.GeneralSettingsFile.AutoSave && elementSave != null)
+        if (_projectManager.GeneralSettingsFile.AutoSave && elementSave != null)
         {
             SaveElement(elementSave);
         }
@@ -82,7 +125,7 @@ public class FileCommands : IFileCommands
 
     public void TryAutoSaveBehavior(BehaviorSave behavior)
     {
-        if(ProjectManager.Self.GeneralSettingsFile.AutoSave && behavior != null)
+        if(_projectManager.GeneralSettingsFile.AutoSave && behavior != null)
         {
             ForceSaveBehavior(behavior);
         }
@@ -111,7 +154,7 @@ public class FileCommands : IFileCommands
         _selectedState.SelectedStateCategorySave = null;
         _selectedState.SelectedStateSave = null;
 
-        ProjectManager.Self.CreateNewProject();
+        _projectManager.CreateNewProject();
 
         _guiCommands.RefreshStateTreeView();
         _guiCommands.RefreshVariables();
@@ -126,7 +169,7 @@ public class FileCommands : IFileCommands
     /// <returns>Whether a save occurred.</returns>
     public bool TryAutoSaveProject(bool forceSaveContainedElements = false)
     {
-        if (ProjectManager.Self.GeneralSettingsFile.AutoSave && !ProjectManager.Self.HaveErrorsOccurredLoadingProject)
+        if (_projectManager.GeneralSettingsFile.AutoSave && !_projectManager.HaveErrorsOccurredLoadingProject)
         {
             ForceSaveProject(forceSaveContainedElements);
             return true;
@@ -136,15 +179,15 @@ public class FileCommands : IFileCommands
 
     public void ForceSaveProject(bool forceSaveContainedElements = false)
     {
-        if (ProjectManager.Self.HaveErrorsOccurredLoadingProject)
+        if (_projectManager.HaveErrorsOccurredLoadingProject)
         {
             _dialogService.ShowMessage("Cannot save project because of earlier errors");
             return;
         }
 
-        var succeeded = ProjectManager.Self.SaveProject(forceSaveContainedElements);
+        var succeeded = _projectManager.SaveProject(forceSaveContainedElements);
 
-        if (string.IsNullOrEmpty(ProjectState.Self.GumProjectSave.FullFileName))
+        if (string.IsNullOrEmpty(_projectState.GumProjectSave.FullFileName))
         {
             // The user most likely canceled the save, as such, we have no filename
             // Do nothing, do not error.
@@ -157,7 +200,7 @@ public class FileCommands : IFileCommands
             return;
         }
 
-        _outputManager.AddOutput("Saved Gum project to " + ProjectState.Self.GumProjectSave.FullFileName);
+        _outputManager.AddOutput("Saved Gum project to " + _projectState.GumProjectSave.FullFileName);
         CreateDefaultFontCharacterFile();
     }
 
@@ -221,16 +264,16 @@ public class FileCommands : IFileCommands
             //UndoManager.Self.RecordUndo();
 
             bool doesProjectNeedToSave = false;
-            bool shouldSave = ProjectManager.Self.AskUserForProjectNameIfNecessary(out doesProjectNeedToSave);
+            bool shouldSave = _projectManager.AskUserForProjectNameIfNecessary(out doesProjectNeedToSave);
 
             if (doesProjectNeedToSave)
             {
-                ProjectManager.Self.SaveProject();
+                _projectManager.SaveProject();
             }
 
             if (shouldSave)
             {
-                PluginManager.Self.BeforeElementSave(elementSave);
+                PluginManager.Self.BeforeSavingElementSave(elementSave);
 
                 var fileName = elementSave.GetFullPathXmlFile();
 
@@ -256,7 +299,8 @@ public class FileCommands : IFileCommands
                     {
                         try
                         {
-                            elementSave.Save(fileName.FullPath);
+                            bool useCompact = _projectState.GumProjectSave?.Version >= (int)GumProjectSave.GumxVersions.AttributeVersion;
+                            elementSave.Save(fileName.FullPath, useCompact);
                             succeeded = true;
                             break;
                         }
@@ -278,7 +322,7 @@ public class FileCommands : IFileCommands
                 if (succeeded)
                 {
                     _outputManager.AddOutput("Saved " + elementSave + " to " + fileName);
-                    PluginManager.Self.AfterElementSave(elementSave);
+                    PluginManager.Self.AfterSavingElementSave(elementSave);
                 }
             }
 
@@ -288,7 +332,7 @@ public class FileCommands : IFileCommands
 
     public void LoadProject(string fileName)
     {
-        ProjectManager.Self.LoadProject(fileName);
+        _projectManager.LoadProject(fileName);
     }
 
     public FilePath GetFullFileName(ElementSave element)
@@ -299,18 +343,18 @@ public class FileCommands : IFileCommands
 
     public void LoadLocalizationFile()
     {
-        _localizationManager.Clear();
+        _localizationService.Clear();
 
-        if (!string.IsNullOrEmpty(GumState.Self.ProjectState.GumProjectSave.LocalizationFile))
+        if (!string.IsNullOrEmpty(_projectState.GumProjectSave.LocalizationFile))
         {
-            FilePath file = GumState.Self.ProjectState.ProjectDirectory + GumState.Self.ProjectState.GumProjectSave.LocalizationFile;
+            FilePath file = _projectState.ProjectDirectory + _projectState.GumProjectSave.LocalizationFile;
 
             if (file.Exists())
             {
                 try
                 {
-                    _localizationManager.AddDatabase(file.FullPath, ',');
-                    _localizationManager.CurrentLanguage = GumState.Self.ProjectState.GumProjectSave.CurrentLanguageIndex;
+                    _localizationService.AddDatabaseFromCsv(file.FullPath, ',');
+                    _localizationService.CurrentLanguage = _projectState.GumProjectSave.CurrentLanguageIndex;
                 }
                 catch (Exception e)
                 {
@@ -334,11 +378,11 @@ public class FileCommands : IFileCommands
             _undoManager.Value.RecordUndo();
 
             bool doesProjectNeedToSave = false;
-            bool shouldSave = ProjectManager.Self.AskUserForProjectNameIfNecessary(out doesProjectNeedToSave);
+            bool shouldSave = _projectManager.AskUserForProjectNameIfNecessary(out doesProjectNeedToSave);
 
             if (doesProjectNeedToSave)
             {
-                ProjectManager.Self.SaveProject();
+                _projectManager.SaveProject();
             }
 
             if (shouldSave)
@@ -367,8 +411,9 @@ public class FileCommands : IFileCommands
                     {
                         try
                         {
-                            FileManager.XmlSerialize(behavior.GetType(), behavior, fileName);
-                            
+                            bool useCompact = _projectState.GumProjectSave?.Version >= (int)GumProjectSave.GumxVersions.AttributeVersion;
+                            behavior.Save(fileName, useCompact);
+
                             succeeded = true;
                             break;
                         }
@@ -404,21 +449,21 @@ public class FileCommands : IFileCommands
         return GetFullPathXmlFile(behaviorSave, behaviorSave.Name);
     }
 
-    static string GetFullPathXmlFile(BehaviorSave behaviorSave, string behaviorName)
+    string GetFullPathXmlFile(BehaviorSave behaviorSave, string behaviorName)
     {
-        if (string.IsNullOrEmpty(ProjectManager.Self.GumProjectSave.FullFileName))
+        if (string.IsNullOrEmpty(_projectManager.GumProjectSave.FullFileName))
         {
             return null;
         }
 
-        string directory = FileManager.GetDirectory(ProjectManager.Self.GumProjectSave.FullFileName);
+        string directory = FileManager.GetDirectory(_projectManager.GumProjectSave.FullFileName);
 
         return directory + BehaviorReference.Subfolder + "\\" + behaviorName + "." + BehaviorReference.Extension;
     }
 
     public void SaveGeneralSettings()
     {
-        var settings = ProjectManager.Self.GeneralSettingsFile;
+        var settings = _projectManager.GeneralSettingsFile;
         settings.Save();
     }
 

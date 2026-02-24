@@ -12,13 +12,22 @@ using ToolsUtilities;
 namespace MonoGameGum.Input;
 
 
-
+/// <summary>
+/// Provides keyboard input handling for XNA-like projects such as MonoGame and KNI.
+/// </summary>
 public class Keyboard : IInputReceiverKeyboardMonoGame
 {
     #region Fields/Properties
 
     HashSet<char> ignoredWindowTextInputCharacters;
-    KeyboardStateProcessor keyboardStateProcessor = new KeyboardStateProcessor();
+    /// <summary>
+    /// Gets or sets the processor responsible for reading and reporting raw input data.
+    /// </summary>
+    /// <remarks>
+    /// This is sety by default on the Keyboard and should not be modified except for unit tests or
+    /// to customize how input reading is done in advanced scenarios.
+    /// </remarks>
+    public KeyboardStateProcessor KeyboardStateProcessor { get; set; } = new KeyboardStateProcessor();
 
     bool[] mKeysTyped;
     double[] mLastTimeKeyTyped;
@@ -35,11 +44,19 @@ public class Keyboard : IInputReceiverKeyboardMonoGame
     /// </summary>
     public TimeSpan RepeatRate { get; set; } = TimeSpan.FromMilliseconds(70);
 
-
+    /// <summary>
+    /// Returns whether either Shift key is currently held down.
+    /// </summary>
     public bool IsShiftDown => KeyDown(Keys.LeftShift) || KeyDown(Keys.RightShift);
 
+    /// <summary>
+    /// Returns whether either Control key is currently held down.
+    /// </summary>
     public bool IsCtrlDown => KeyDown(Keys.LeftControl) || KeyDown(Keys.RightControl);
 
+    /// <summary>
+    /// Returns whether either Alt key is currently held down.
+    /// </summary>
     public bool IsAltDown => KeyDown(Keys.LeftAlt) || KeyDown(Keys.RightAlt);
 
     bool[] mKeysIgnoredForThisFrame;
@@ -47,7 +64,9 @@ public class Keyboard : IInputReceiverKeyboardMonoGame
     List<Keys> keysTypedInternal = new List<Keys>();
 
 
-
+    /// <summary>
+    /// Returns a collection of keys that were typed this frame.
+    /// </summary>
     public IReadOnlyCollection<Microsoft.Xna.Framework.Input.Keys> KeysTyped
     {
         get
@@ -82,6 +101,11 @@ public class Keyboard : IInputReceiverKeyboardMonoGame
 
     #endregion
 
+    /// <summary>
+    /// Instantiates a new Keyboard instance, optionally subscribing to the provided Game's Window TextInput event.
+    /// </summary>
+    /// <param name="game">The optional Game. If passed, the keyboard attempts to subscribe to the Game's Window TextInput event
+    /// if it is available on the current platform.</param>
     public Keyboard(Game? game = null)
     {
 
@@ -110,7 +134,12 @@ public class Keyboard : IInputReceiverKeyboardMonoGame
         }
         try
         {
-            TrySubscribeToGameWindowInput(game);
+            var isMobile = System.OperatingSystem.IsAndroid() || System.OperatingSystem.IsIOS();
+            // this isn't supported on mobile:
+            if (!isMobile)
+            {
+                TrySubscribeToGameWindowInput(game);
+            }
         }
         catch
         {
@@ -134,7 +163,7 @@ public class Keyboard : IInputReceiverKeyboardMonoGame
 
             }
 
-            if(succeeded)
+            if (succeeded)
             {
                 windowTextInputBuffer = new StringBuilder();
             }
@@ -143,20 +172,20 @@ public class Keyboard : IInputReceiverKeyboardMonoGame
     }
 
     StringBuilder windowTextInputBuffer;
-    string processedStringFromWindow;
+    string processedStringFromWindow = string.Empty;
 
 
 #if !FNA
     private void HandleWindowTextInput(object? sender, TextInputEventArgs e)
     {
-        lock(windowTextInputBuffer)
+        lock (windowTextInputBuffer)
         {
             // In DirectX environments, which use Windows Forms, certain characters
             // are returned for certain hotkey combinations like '\u0001' for CTRL+A.
             // We need to ignore these:
 
             //System.Diagnostics.Debug.WriteLine($"Char: \\u{((int)e.Character):X4}" + $" ({e.Character} , {(int)e.Character})");
-            if(ignoredWindowTextInputCharacters.Contains(e.Character) == false)
+            if (ignoredWindowTextInputCharacters.Contains(e.Character) == false)
             {
                 windowTextInputBuffer.Append(e.Character);
             }
@@ -171,7 +200,7 @@ public class Keyboard : IInputReceiverKeyboardMonoGame
         //    return "";
 
         ///////////////////////////////////////early out//////////////////////////////////
-        if(windowTextInputBuffer != null)
+        if (windowTextInputBuffer != null)
         {
             return processedStringFromWindow;
         }
@@ -251,9 +280,9 @@ public class Keyboard : IInputReceiverKeyboardMonoGame
 
 
 
-        return 
+        return
             //!InputManager.CurrentFrameInputSuspended && 
-            keyboardStateProcessor.IsKeyDown(key);
+            KeyboardStateProcessor.IsKeyDown(key);
     }
 
     public bool KeyTyped(Keys key)
@@ -270,7 +299,7 @@ public class Keyboard : IInputReceiverKeyboardMonoGame
         }
 #endif
 
-        return 
+        return
             //!InputManager.CurrentFrameInputSuspended && 
             mKeysTyped[(int)key];
     }
@@ -290,7 +319,7 @@ public class Keyboard : IInputReceiverKeyboardMonoGame
 #endif
 
 
-        return /* !InputManager.CurrentFrameInputSuspended && */ keyboardStateProcessor.KeyPushed(key);
+        return /* !InputManager.CurrentFrameInputSuspended && */ KeyboardStateProcessor.KeyPushed(key);
     }
 
     public bool KeyReleased(Keys key)
@@ -300,7 +329,7 @@ public class Keyboard : IInputReceiverKeyboardMonoGame
             return false;
         }
 
-        return /* !InputManager.CurrentFrameInputSuspended && */ keyboardStateProcessor.KeyReleased(key);
+        return /* !InputManager.CurrentFrameInputSuspended && */ KeyboardStateProcessor.KeyReleased(key);
 
     }
 
@@ -316,10 +345,15 @@ public class Keyboard : IInputReceiverKeyboardMonoGame
 #if ANDROID
 			ProcessAndroidKeys();
 #endif
+
+        var isMobile = System.OperatingSystem.IsAndroid() || System.OperatingSystem.IsIOS();
+        // this isn't supported on mobile:
+
+
         // This could be done in initialize, we don't want
         // to break projects. Instead, GumService.Initialize
         // now has the GraphicsDevice version obsolete 
-        if (windowTextInputBuffer == null && game != null)
+        if (windowTextInputBuffer == null && game != null && !isMobile)
         {
             try
             {
@@ -337,7 +371,7 @@ public class Keyboard : IInputReceiverKeyboardMonoGame
         // which we will later handle in TextBox.HandleCharEntered() via Property GetStringTyped()
         if (windowTextInputBuffer != null)
         {
-            lock(windowTextInputBuffer)
+            lock (windowTextInputBuffer)
             {
                 processedStringFromWindow = windowTextInputBuffer.ToString();
                 windowTextInputBuffer.Clear();
@@ -345,7 +379,7 @@ public class Keyboard : IInputReceiverKeyboardMonoGame
         }
 
         // Gather all the keys from Keyboard.GetState()
-        keyboardStateProcessor.Update();
+        KeyboardStateProcessor.Update();
 
         // Process any fresh key presses from Keyboard.GetState()
         HandleFreshKeyPress(currentTime);
@@ -403,14 +437,14 @@ public class Keyboard : IInputReceiverKeyboardMonoGame
         }
     }
 
-    // The ENTER key (char 13 \r) is normally handled by TextInput
-    // However, when the Number Pad ENTER key is pressed, TextInput does not receive it.
-    // It is however detected during during Keyboard.GetKeys.
-    // But, we don't want the normal ENTER key to fire twice, so we check that first.
     private void HandleNumPadEnter(int key)
     {
+        // The ENTER key (char 13 \r) is normally handled by TextInput
+        // However, when the Number Pad ENTER key is pressed, TextInput does not receive it.
+        // It is however detected during during Keyboard.GetKeys.
+        // But, we don't want the normal ENTER key to fire twice, so we check that first.
         if ((key == 13 || key == 10)
-            && !processedStringFromWindow.Contains('\n') 
+            && !processedStringFromWindow.Contains('\n')
             && !processedStringFromWindow.Contains('\r'))
         {
             processedStringFromWindow += '\n';
@@ -591,7 +625,7 @@ public class KeyboardStateProcessor
     KeyboardState mLastFrameKeyboardState = new KeyboardState();
     KeyboardState mKeyboardState;
 
-    public bool AnyKeyPushed()
+    public virtual bool AnyKeyPushed()
     {
         // loop through all pressed keys...
         for (int i = 0; i < Keyboard.NumberOfKeys; i++)
@@ -610,30 +644,30 @@ public class KeyboardStateProcessor
     /// Clears the keyboard states, simulating the keyboard
     /// not having any values down or pressed
     /// </summary>
-    public void Clear()
+    public virtual void Clear()
     {
         mKeyboardState = new KeyboardState();
         mLastFrameKeyboardState = new KeyboardState();
     }
 
-    public bool IsKeyDown(Keys key)
+    public virtual bool IsKeyDown(Keys key)
     {
         return mKeyboardState.IsKeyDown(key);
     }
 
-    public bool KeyPushed(Keys key)
+    public virtual bool KeyPushed(Keys key)
     {
         return mKeyboardState.IsKeyDown(key) &&
             !mLastFrameKeyboardState.IsKeyDown(key);
     }
 
-    public bool KeyReleased(Keys key)
+    public virtual bool KeyReleased(Keys key)
     {
         return mLastFrameKeyboardState.IsKeyDown(key) &&
             !mKeyboardState.IsKeyDown(key);
     }
 
-    public void Update()
+    public virtual void Update()
     {
         mLastFrameKeyboardState = mKeyboardState;
         mKeyboardState = Microsoft.Xna.Framework.Input.Keyboard.GetState();

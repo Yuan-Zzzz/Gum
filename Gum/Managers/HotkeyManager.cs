@@ -17,6 +17,7 @@ using System.Windows.Forms;
 using System.Windows.Input;
 using Gum.Undo;
 using KeyEventArgs = System.Windows.Forms.KeyEventArgs;
+using Gum.Plugins.InternalPlugins.VariableGrid;
 
 namespace Gum.Managers;
 
@@ -99,7 +100,7 @@ public class KeyCombination
 
     }
 
-    public bool IsPressedInControl()
+    public virtual bool IsPressedInControl()
     {
         if (IsCtrlDown && (Control.ModifierKeys & Keys.Control) != Keys.Control) return false;
         if (IsShiftDown && (Control.ModifierKeys & Keys.Shift) != Keys.Shift) return false;
@@ -147,7 +148,7 @@ public class KeyCombination
 }
 #endregion
 
-public class HotkeyManager
+public class HotkeyManager : IHotkeyManager
 {
     public KeyCombination Delete { get; private set; } = KeyCombination.Pressed(Keys.Delete);
     public KeyCombination Copy { get; private set; } = KeyCombination.Ctrl(Keys.C);
@@ -179,6 +180,7 @@ public class HotkeyManager
     public KeyCombination LockMovementToAxis { get; private set; } = KeyCombination.Shift();
     public KeyCombination MaintainResizeAspectRatio { get; private set; } = KeyCombination.Shift();
     public KeyCombination SnapRotationTo15Degrees { get; private set; } = KeyCombination.Shift();
+    public KeyCombination MultiSelect { get; private set; } = KeyCombination.Shift();
     public KeyCombination ResizeFromCenter { get; private set; } = KeyCombination.Alt();
 
     public KeyCombination MoveCameraLeft { get; private set; } = KeyCombination.Ctrl(Keys.Left);
@@ -194,31 +196,33 @@ public class HotkeyManager
 
     public KeyCombination Rename { get; private set; } = KeyCombination.Pressed(Keys.F2);
 
-    private readonly CopyPasteLogic _copyPasteLogic;
+    // If adding any new keys here, modify HotkeyViewModel
+
+
+    private readonly ICopyPasteLogic _copyPasteLogic;
     private readonly IGuiCommands _guiCommands;
     private readonly ISelectedState _selectedState;
     private readonly IElementCommands _elementCommands;
     private readonly IDialogService _dialogService;
     private readonly IFileCommands _fileCommands;
-    private readonly SetVariableLogic _setVariableLogic;
+    private readonly ISetVariableLogic _setVariableLogic;
     private readonly IUiSettingsService _uiSettingsService;
     private readonly IUndoManager _undoManager;
-    private readonly DeleteLogic _deleteLogic;
-    private readonly ReorderLogic _reorderLogic;
+    private readonly IDeleteLogic _deleteLogic;
+    private readonly IReorderLogic _reorderLogic;
 
-    // If adding any new keys here, modify HotkeyViewModel
 
     public HotkeyManager(IGuiCommands guiCommands, 
         ISelectedState selectedState, 
         IElementCommands elementCommands,
         IDialogService dialogService,
         IFileCommands fileCommands,
-        SetVariableLogic setVariableLogic,
+        ISetVariableLogic setVariableLogic,
         IUiSettingsService uiSettingsService,
-        CopyPasteLogic copyPasteLogic,
+        ICopyPasteLogic copyPasteLogic,
         IUndoManager undoManager,
-        DeleteLogic deleteLogic,
-        ReorderLogic reorderLogic)
+        IDeleteLogic deleteLogic,
+        IReorderLogic reorderLogic)
     {
         _copyPasteLogic = copyPasteLogic;
         _guiCommands = guiCommands;
@@ -236,14 +240,14 @@ public class HotkeyManager
     #region App Wide Keys
 
 
-    public bool PreviewKeyDownAppWide(System.Windows.Input.KeyEventArgs e)
+    public bool PreviewKeyDownAppWide(System.Windows.Input.KeyEventArgs e, bool enableEntireAppZoom = true)
     {
         Action? match = (e.Key, Keyboard.Modifiers) switch
         {
             _ when Search.IsPressed(e)  => _guiCommands.FocusSearch,
             _ when RedoAlt.IsPressed(e) || Redo.IsPressed(e) => _undoManager.PerformRedo,
             _ when Undo.IsPressed(e) => _undoManager.PerformUndo,
-            _ when ZoomDirection() is { } dir => () => _uiSettingsService.BaseFontSize += dir,
+            _ when ZoomDirection() is { } dir && enableEntireAppZoom => () => _uiSettingsService.BaseFontSize += dir,
             _ => null
         };
 
@@ -402,9 +406,9 @@ public class HotkeyManager
 
     #region Wireframe Control
 
-    public void HandleKeyDownWireframe(KeyEventArgs e)
+    public void HandleEditorKeyDown(KeyEventArgs e)
     {
-        if (PreviewKeyDownAppWide(e.ToWpf()))
+        if (PreviewKeyDownAppWide(e.ToWpf(), enableEntireAppZoom: false))
         {
             e.Handled = true;
             return;
@@ -463,12 +467,18 @@ public class HotkeyManager
 
         if (nudgeX != 0 || nudgeY != 0)
         {
+            var instance = _selectedState.SelectedInstance;
+
+            if (instance?.Locked == true)
+            {
+                return false;
+            }
+
             if(!_isNudging)
             {
                 _isNudging = true;
                 _undoManager.RecordState();
             }
-            var instance = _selectedState.SelectedInstance;
 
             var element = _selectedState.SelectedElement;
 

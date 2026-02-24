@@ -88,6 +88,7 @@ public class SliderVisual : InteractiveGue
     public SliderVisual(bool fullInstantiation = true, bool tryCreateFormsObject = true) : base(new InvisibleRenderable())
     {
 
+        this.HasEvents = true;
         Width = 128;
         Height = 24;
         float sliderButtonWidth = 32f;
@@ -104,6 +105,7 @@ public class SliderVisual : InteractiveGue
         TrackInstance.WidthUnits = global::Gum.DataTypes.DimensionUnitType.RelativeToParent;
         TrackInstance.Height = 0f;
         TrackInstance.HeightUnits = global::Gum.DataTypes.DimensionUnitType.RelativeToParent;
+        TrackInstance.HasEvents = true;
         this.AddChild(TrackInstance);
 
         TrackBackground = new NineSliceRuntime();
@@ -224,5 +226,5 @@ public class SliderVisual : InteractiveGue
 
     }
 
-    public Controls.Slider FormsControl => FormsControlAsObject as Controls.Slider;
+    public Controls.Slider FormsControl => (Slider)FormsControlAsObject;
 }

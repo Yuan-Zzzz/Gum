@@ -10,7 +10,7 @@ using System.Text;
 namespace Gum.Collections;
 
 /// <summary>
-/// A wrapper collection that presents an ObservableCollection<IRenderableIpso> as ObservableCollection<GraphicalUiElement>.
+/// A wrapper collection that presents an ObservableCollection&lt;IRenderableIpso&gt; as ObservableCollection&lt;GraphicalUiElement&gt;.
 /// Maintains bidirectional synchronization between the inner collection and this wrapper.
 /// </summary>
 public class GraphicalUiElementCollection : ObservableCollectionNoReset<GraphicalUiElement>
@@ -22,7 +22,7 @@ public class GraphicalUiElementCollection : ObservableCollectionNoReset<Graphica
     /// </summary>
     public static GraphicalUiElementCollection Empty => _empty;
 
-    private readonly ObservableCollection<IRenderableIpso> _innerCollection;
+    private readonly ObservableCollection<IRenderableIpso> _innerCollection = default!;
     private bool _isUpdatingFromInner = false;
     private bool _isUpdatingFromOuter = false;
 
@@ -54,14 +54,14 @@ public class GraphicalUiElementCollection : ObservableCollectionNoReset<Graphica
     /// </summary>
     private GraphicalUiElementCollection()
     {
-        _innerCollection = null; // No backing collection for empty instance
+        _innerCollection = default!; // No backing collection for empty instance
         IsReadOnly = true;
     }
 
     /// <summary>
     /// Handles changes from the inner IRenderableIpso collection and syncs them to this collection.
     /// </summary>
-    private void InnerCollection_CollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
+    private void InnerCollection_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         // Prevent circular updates
         if (_isUpdatingFromOuter)
@@ -139,7 +139,15 @@ public class GraphicalUiElementCollection : ObservableCollectionNoReset<Graphica
     private void ThrowIfReadOnly()
     {
         if (IsReadOnly)
+        {
+            if(this == _empty)
+            {
+                throw new InvalidOperationException(
+                    "Cannot modify the empty collection. " +
+                    "If this is in a Visual, did you create a proper Visual which has a renderable, such as ContainerRuntime?");
+            }
             throw new NotSupportedException("Cannot modify a read-only collection.");
+        }
     }
 
     /// <summary>

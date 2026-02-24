@@ -6,6 +6,10 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
+#if GUM
+using Gum.Services;
+using Gum.ToolStates;
+#endif
 
 #if RAYLIB
 using Gum.Renderables;
@@ -45,11 +49,12 @@ namespace Gum.Wireframe
 #if GUM
                         lineRectangle.IsDotted = true;
 
+                        var projectState = Locator.GetRequiredService<IProjectState>();
                         lineRectangle.Color = System.Drawing.Color.FromArgb(
                             255,
-                            Gum.ToolStates.GumState.Self.ProjectState.GeneralSettings.OutlineColorR,
-                            Gum.ToolStates.GumState.Self.ProjectState.GeneralSettings.OutlineColorG,
-                            Gum.ToolStates.GumState.Self.ProjectState.GeneralSettings.OutlineColorB
+                            projectState.GeneralSettings.OutlineColorR,
+                            projectState.GeneralSettings.OutlineColorG,
+                            projectState.GeneralSettings.OutlineColorB
                             );
 #endif
                         containedObject = lineRectangle;
@@ -101,12 +106,12 @@ namespace Gum.Wireframe
 #endif
 
 #if SKIA
-                case  "Arc":
-                    return new SkiaGum.Renderables.RenderableArc();
-                case  "ColoredCircle":
-                    return new SkiaGum.Renderables.RenderableCircle();
-                case  "RoundedRectangle":
-                    return new SkiaGum.Renderables.RenderableRoundedRectangle();
+                case "Arc":
+                    return new SkiaGum.Renderables.Arc();
+                case "ColoredCircle":
+                    return new SkiaGum.Renderables.Circle();
+                case "RoundedRectangle":
+                    return new SkiaGum.Renderables.RoundedRectangle();
 
 #endif
 

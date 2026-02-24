@@ -40,14 +40,14 @@ public class FontManager
 
     private readonly IGuiCommands _guiCommands;
     private readonly IFileCommands _fileCommands;
-    private readonly FileWatchManager _fileWatchManager;
+    private readonly IFileWatchManager _fileWatchManager;
 
     public string AbsoluteFontCacheFolder => _fileCommands.ProjectDirectory + "FontCache/";
     string BmFontExeNoPath => "Gum.Libraries.bmfont.exe";
 
-    public FontManager(IGuiCommands guiCommands, 
+    public FontManager(IGuiCommands guiCommands,
         IFileCommands fileCommands,
-        FileWatchManager fileWatchManager)
+        IFileWatchManager fileWatchManager)
     {
         _guiCommands = guiCommands;
         _fileCommands = fileCommands;
@@ -531,7 +531,7 @@ public class FontManager
     {
         var tcs = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        void Process_Exited(object sender, EventArgs e)
+        void Process_Exited(object? sender, EventArgs e)
         {
             tcs.TrySetResult(process.ExitCode);
         }

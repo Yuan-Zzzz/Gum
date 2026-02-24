@@ -17,20 +17,23 @@ namespace Gum.Wireframe
         Line mXLine1;
         Line mXLine2;
 
-        Line mOriginLine;
+        Line mXOriginLine; // red, horizontal
+        Line mYOriginLine; // green, vertical
+
+        Line mTopConnectorLine;  // dotted, closes the top of the offset box
+        Line mLeftConnectorLine; // dotted, closes the left of the offset box
 
         public bool Visible
         {
-            get
-            {
-                return mOriginLine.Visible;
-            }
+            get => mXOriginLine.Visible;
             set
             {
                 mXLine1.Visible = value;
                 mXLine2.Visible = value;
-
-                mOriginLine.Visible = value;
+                mXOriginLine.Visible = value;
+                mYOriginLine.Visible = value;
+                mTopConnectorLine.Visible = value;
+                mLeftConnectorLine.Visible = value;
             }
         }
 
@@ -45,9 +48,27 @@ namespace Gum.Wireframe
             ShapeManager.Self.Add(mXLine1, layer);
             ShapeManager.Self.Add(mXLine2, layer);
 
-            mOriginLine = new Line(null);
-            mOriginLine.Name = "Resize Handle Offset Line";
-            ShapeManager.Self.Add(mOriginLine, layer);
+            mXOriginLine = new Line(null);
+            mXOriginLine.Name = "Origin X Line";
+            mXOriginLine.Color = Color.Red;
+            ShapeManager.Self.Add(mXOriginLine, layer);
+
+            mYOriginLine = new Line(null);
+            mYOriginLine.Name = "Origin Y Line";
+            mYOriginLine.Color = Color.Green;
+            ShapeManager.Self.Add(mYOriginLine, layer);
+
+            mTopConnectorLine = new Line(null);
+            mTopConnectorLine.Name = "Origin Top Connector";
+            mTopConnectorLine.Color = Color.FromArgb(127, 0, 128, 0); // transparent green, matches Y axis
+            mTopConnectorLine.IsDotted = true;
+            ShapeManager.Self.Add(mTopConnectorLine, layer);
+
+            mLeftConnectorLine = new Line(null);
+            mLeftConnectorLine.Name = "Origin Left Connector";
+            mLeftConnectorLine.Color = Color.FromArgb(127, 255, 0, 0); // transparent red, matches X axis
+            mLeftConnectorLine.IsDotted = true;
+            ShapeManager.Self.Add(mLeftConnectorLine, layer);
 
         }
 
@@ -55,7 +76,10 @@ namespace Gum.Wireframe
         {
             ShapeManager.Self.Remove(mXLine1);
             ShapeManager.Self.Remove(mXLine2);
-            ShapeManager.Self.Remove(mOriginLine);
+            ShapeManager.Self.Remove(mXOriginLine);
+            ShapeManager.Self.Remove(mYOriginLine);
+            ShapeManager.Self.Remove(mTopConnectorLine);
+            ShapeManager.Self.Remove(mLeftConnectorLine);
         }
 
         public void UpdateTo(GraphicalUiElement asGue)
@@ -63,7 +87,8 @@ namespace Gum.Wireframe
             var parent = asGue.EffectiveParentGue;
 
 
-            mOriginLine.Visible = true;
+            mXOriginLine.Visible = true;
+            mYOriginLine.Visible = true;
 
             // The child's position is relative
             // to the parent, but not always the
@@ -138,11 +163,11 @@ namespace Gum.Wireframe
                 parentAbsoluteRotation = parent.GetAbsoluteRotation();
             }
 
+            float startX, startY;
             if (parentAbsoluteRotation == 0)
             {
-                mOriginLine.X = parentOriginOffsetX + parentAbsoluteX;
-                mOriginLine.Y = parentOriginOffsetY + parentAbsoluteY;
-
+                startX = parentOriginOffsetX + parentAbsoluteX;
+                startY = parentOriginOffsetY + parentAbsoluteY;
             }
             else
             {
@@ -150,23 +175,42 @@ namespace Gum.Wireframe
 
                 var rotatedVector = parentOriginOffsetX * matrix.Right() + parentOriginOffsetY * matrix.Up();
 
-
-                mOriginLine.X = rotatedVector.X + parentAbsoluteX;
-                mOriginLine.Y = rotatedVector.Y + parentAbsoluteY;
+                startX = rotatedVector.X + parentAbsoluteX;
+                startY = rotatedVector.Y + parentAbsoluteY;
             }
 
             GetSelectedAbsoluteXAndY(asGue, parentFlips, out float selectedObjectX, out float selectedObjectY);
 
-            mOriginLine.RelativePoint.X = selectedObjectX - mOriginLine.X;
-            mOriginLine.RelativePoint.Y = selectedObjectY - mOriginLine.Y;
+            // Green vertical line: at child's X, from parent Y down to child's Y
+            mYOriginLine.X = selectedObjectX;
+            mYOriginLine.Y = startY;
+            mYOriginLine.RelativePoint.X = 0;
+            mYOriginLine.RelativePoint.Y = selectedObjectY - startY;
+
+            // Red horizontal line: at child's Y, from parent X across to child's X position
+            mXOriginLine.X = startX;
+            mXOriginLine.Y = selectedObjectY;
+            mXOriginLine.RelativePoint.X = selectedObjectX - startX;
+            mXOriginLine.RelativePoint.Y = 0;
+
+            // Dotted top connector: from parent origin horizontally to top of Y-axis line
+            mTopConnectorLine.X = startX;
+            mTopConnectorLine.Y = startY;
+            mTopConnectorLine.RelativePoint.X = selectedObjectX - startX;
+            mTopConnectorLine.RelativePoint.Y = 0;
+
+            // Dotted left connector: from parent origin vertically down to start of X-axis line
+            mLeftConnectorLine.X = startX;
+            mLeftConnectorLine.Y = startY;
+            mLeftConnectorLine.RelativePoint.X = 0;
+            mLeftConnectorLine.RelativePoint.Y = selectedObjectY - startY;
         }
 
         public void SetColor(Color color)
         {
             mXLine1.Color = color;
             mXLine2.Color = color;
-
-            mOriginLine.Color = color;
+            // mXOriginLine and mYOriginLine have fixed colors (red and green)
         }
 
         private static void GetSelectedAbsoluteXAndY(GraphicalUiElement asGue, bool parentFlips, out float selectedObjectX, out float selectedObjectY)

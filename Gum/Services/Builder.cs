@@ -32,6 +32,7 @@ using ToolsUtilities;
 using Gum.Logic.FileWatch;
 using Gum.Reflection;
 using Gum.Services.Fonts;
+using Gum.Localization;
 
 namespace Gum.Services;
 
@@ -83,40 +84,56 @@ file static class ServiceCollectionExtensions
         // static singletons
         services.AddSingleton<IObjectFinder>(ObjectFinder.Self);
         services.AddSingleton<PluginManager>(PluginManager.Self);
+        services.AddSingleton<IPluginManager>(provider => provider.GetRequiredService<PluginManager>());
         services.AddSingleton<TypeManager>(TypeManager.Self);
+        services.AddSingleton<ITypeManager>(provider => provider.GetRequiredService<TypeManager>());
+        services.AddSingleton<ProjectManager>(ProjectManager.Self);
+        services.AddSingleton<StandardElementsManagerGumTool>(StandardElementsManagerGumTool.Self);
+        services.AddSingleton<IStandardElementsManagerGumTool>(provider => provider.GetRequiredService<StandardElementsManagerGumTool>());
+        services.AddSingleton<IProjectManager>(provider => provider.GetRequiredService<ProjectManager>());
+        services.AddSingleton<IProjectState, ProjectState>();
         // We can do this once we get rid of usages of ProjectManager.Self because we have to inject. Until then, we can't do this.
         //services.AddSingleton<ProjectManager>(ProjectManager.Self);
 
         // singletons
+        services.AddSingleton<ICircularReferenceManager, CircularReferenceManager>();
+        services.AddSingleton<IFavoriteComponentManager, FavoriteComponentManager>();
+        services.AddSingleton<ICopyPasteLogic, CopyPasteLogic>();
+        services.AddSingleton<IDeleteLogic, DeleteLogic>();
+        services.AddSingleton<FileLocations>();
+        services.AddSingleton<FileWatchLogic>();
+        services.AddSingleton<FontManager>();
+        services.AddSingleton<IHotkeyManager, HotkeyManager>();
+        services.AddSingleton<LocalizationService>();
         services.AddSingleton<ISelectedState, SelectedState>();
-        services.AddSingleton<LocalizationManager>();
         services.AddSingleton<INameVerifier, NameVerifier>();
         services.AddSingleton<IUndoManager, UndoManager>();
-        services.AddSingleton<DeleteLogic>();
-        services.AddSingleton<CopyPasteLogic>();
-        services.AddSingleton<FontManager>();
-        services.AddSingleton<HotkeyManager>();
         services.AddSingleton<IEditVariableService, EditVariableService>();
         services.AddSingleton<IDeleteVariableService, DeleteVariableService>();
         services.AddSingleton<IExposeVariableService, ExposeVariableService>();
-        services.AddSingleton<CircularReferenceManager>();
-        services.AddSingleton<DragDropManager>();
+        services.AddSingleton<IDragDropManager, DragDropManager>();
         services.AddSingleton<MenuStripManager>();
         services.AddSingleton<ImportLogic>();
+        services.AddSingleton<IImportLogic>(provider => provider.GetRequiredService<ImportLogic>());
         services.AddSingleton<MainOutputViewModel>();
 
-        // temporary while transitioning all usage from WireframeObjectManager to IWireframeObjectManager
-        services.AddSingleton<WireframeObjectManager>();
-        services.AddSingleton<IWireframeObjectManager>(provider => provider.GetRequiredService<WireframeObjectManager>());
+        // WireframeObjectManager concrete class is needed for Initialize() call in Program.cs (two-stage initialization)
+        services.AddSingleton<IWireframeObjectManager, WireframeObjectManager>();
         services.AddSingleton<IOutputManager>(provider => provider.GetRequiredService<MainOutputViewModel>());
         services.AddSingleton<FileWatchManager>();
+        services.AddSingleton<IFileWatchManager>(provider => provider.GetRequiredService<FileWatchManager>());
         services.AddSingleton<ReorderLogic>();
+        services.AddSingleton<IReorderLogic>(provider => provider.GetRequiredService<ReorderLogic>());
 
+        services.AddSingleton<IUserProjectSettingsManager, UserProjectSettingsManager>();
+        services.AddSingleton<ErrorChecker>();
+        services.AddSingleton<IErrorChecker>(provider => provider.GetRequiredService<ErrorChecker>());
         services.AddSingleton<VariableReferenceLogic>();
         services.AddSingleton<IRenameLogic, RenameLogic>();
-        services.AddSingleton<SetVariableLogic>();
+        services.AddSingleton<ISetVariableLogic, SetVariableLogic>();
 
         services.AddSingleton<WireframeCommands>();
+        services.AddSingleton<IWireframeCommands>(provider => provider.GetRequiredService<WireframeCommands>());
         services.AddSingleton<IGuiCommands, GuiCommands>();
         services.AddSingleton<IEditCommands, EditCommands>();
         services.AddSingleton<IVariableInCategoryPropagationLogic, VariableInCategoryPropagationLogic>();

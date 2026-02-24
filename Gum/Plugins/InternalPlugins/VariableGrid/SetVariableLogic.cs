@@ -1,4 +1,5 @@
 using Gum.DataTypes;
+using Gum.DataTypes.Behaviors;
 using Gum.DataTypes.Variables;
 using Gum.Managers;
 using Gum.Plugins;
@@ -11,7 +12,6 @@ using System.Windows.Forms;
 using Gum.RenderingLibrary;
 using Gum.Converters;
 using RenderingLibrary.Content;
-using CommonFormsAndControls.Forms;
 using ToolsUtilities;
 using RenderingLibrary.Graphics;
 using Gum.Logic;
@@ -34,7 +34,7 @@ public enum VariableRefreshType
     ThisVariableRefresh
 }
 
-public class SetVariableLogic
+public class SetVariableLogic : ISetVariableLogic
 {
     Dictionary<string, VariableRefreshType> VariablesRequiringRefresh = new ()
     {
@@ -54,7 +54,7 @@ public class SetVariableLogic
 
 
     private readonly VariableReferenceLogic _variableReferenceLogic;
-    private readonly CircularReferenceManager _circularReferenceManager;
+    private readonly ICircularReferenceManager _circularReferenceManager;
     private readonly FontManager _fontManager;
     private readonly IFileCommands _fileCommands;
     private readonly ISelectedState _selectedState;
@@ -67,23 +67,27 @@ public class SetVariableLogic
     private readonly IVariableInCategoryPropagationLogic _variableInCategoryPropagationLogic;
     private readonly IDialogService _dialogService;
     private readonly PluginManager _pluginManager;
-    private readonly WireframeObjectManager _wireframeObjectManager;
+    private readonly IWireframeObjectManager _wireframeObjectManager;
+    private readonly IProjectState _projectState;
+    private readonly IProjectManager _projectManager;
 
-    public SetVariableLogic(ISelectedState selectedState, 
-        INameVerifier nameVerifier, 
-        IRenameLogic renameLogic, 
-        IElementCommands elementCommands, 
+    public SetVariableLogic(ISelectedState selectedState,
+        INameVerifier nameVerifier,
+        IRenameLogic renameLogic,
+        IElementCommands elementCommands,
         IUndoManager undoManager,
         WireframeCommands wireframeCommands,
         VariableReferenceLogic variableReferenceLogic,
         IGuiCommands guiCommands,
         FontManager fontManager,
         IFileCommands fileCommands,
-        CircularReferenceManager circularReferenceManager,
+        ICircularReferenceManager circularReferenceManager,
         IVariableInCategoryPropagationLogic variableInCategoryPropagationLogic,
         IDialogService dialogService,
         PluginManager pluginManager,
-        WireframeObjectManager wireframeObjectManager)
+        IWireframeObjectManager wireframeObjectManager,
+        IProjectState projectState,
+        IProjectManager projectManager)
     {
         _selectedState = selectedState;
         _nameVerifier = nameVerifier;
@@ -100,6 +104,8 @@ public class SetVariableLogic
         _dialogService = dialogService;
         _pluginManager = pluginManager;
         _wireframeObjectManager = wireframeObjectManager;
+        _projectState = projectState;
+        _projectManager = projectManager;
     }
 
     public bool AttemptToPersistPositionsOnUnitChanges { get; set; } = true;
@@ -107,10 +113,11 @@ public class SetVariableLogic
 
 
     // added instance property so we can change values even if a tree view is selected
-    public GeneralResponse PropertyValueChanged(string unqualifiedMemberName, object oldValue, InstanceSave instance, StateSave stateContainingVariable, bool refresh = true, bool recordUndo = true,
+    public GeneralResponse PropertyValueChanged(string unqualifiedMemberName, object? oldValue,
+        InstanceSave instance, StateSave stateContainingVariable, bool refresh = true, bool recordUndo = true,
         bool trySave = true)
     {
-        IInstanceContainer instanceContainer = null;
+        IInstanceContainer? instanceContainer = null;
 
         if (stateContainingVariable != null)
         {
@@ -134,8 +141,8 @@ public class SetVariableLogic
             // --or--
             // the user hasn't selected a behavior.
             // case we should look to the instance and get its container:
-            instanceContainer = 
-                (IInstanceContainer)ObjectFinder.Self.GetElementContainerOf(instance) ?? 
+            instanceContainer =
+                (IInstanceContainer)ObjectFinder.Self.GetElementContainerOf(instance) ??
                 ObjectFinder.Self.GetBehaviorContainerOf(instance);
         }
         if(stateContainingVariable == null && instanceContainer is ElementSave containerElement)
@@ -156,7 +163,7 @@ public class SetVariableLogic
     /// <param name="instance"></param>
     /// <param name="currentState">The state where the variable was set - the current state save</param>
     /// <param name="refresh"></param>
-    public GeneralResponse ReactToPropertyValueChanged(string unqualifiedMember, object oldValue, IInstanceContainer instanceContainer,
+    public GeneralResponse ReactToPropertyValueChanged(string unqualifiedMember, object? oldValue, IInstanceContainer instanceContainer,
         InstanceSave instance, StateSave currentState, bool refresh, bool recordUndo = true, bool trySave = true)
     {
         GeneralResponse response = GeneralResponse.SuccessfulResponse;
@@ -174,47 +181,51 @@ public class SetVariableLogic
             // we can still raise the plugin event after? If so, I'm going to move the plugin manager call
             // out of ReactToChangedMember and call it here.
             response = ReactToChangedMember(unqualifiedMember, oldValue, instanceContainer, instance, currentState);
+
             var parentElement = instanceContainer as ElementSave;
 
-            bool didSetDeepReference = false;
-
-            if (parentElement != null)
+            if(response.Succeeded)
             {
-                string qualifiedName = unqualifiedMember;
-                if (instance != null)
+                bool didSetDeepReference = false;
+
+                if (parentElement != null)
                 {
-                    qualifiedName = $"{instance.Name}.{unqualifiedMember}";
+                    string qualifiedName = unqualifiedMember;
+                    if (instance != null)
+                    {
+                        qualifiedName = $"{instance.Name}.{unqualifiedMember}";
+                    }
+
+                    _variableReferenceLogic.DoVariableReferenceReaction(parentElement, instance, unqualifiedMember, currentState, qualifiedName, trySave);
+
+                    _variableInCategoryPropagationLogic.PropagateVariablesInCategory(qualifiedName, parentElement,
+                        // This code used to not specify the category, so it defaulted to the selected category.
+                        // I'm maintaining this behavior but I'm not sure if it's what should happen - maybe we should
+                        // serach for the owner category of the state?
+                        _selectedState.SelectedStateCategorySave);
+
+                    // Need to record undo before refreshing and reselecting the UI
+                    if (recordUndo)
+                    {
+                        _undoManager.RecordUndo();
+                    }
+
+                    if (refresh)
+                    {
+                        RefreshInResponseToVariableChange(unqualifiedMember, oldValue, parentElement, instance, qualifiedName);
+
+                    }
                 }
 
-                _variableReferenceLogic.DoVariableReferenceReaction(parentElement, instance, unqualifiedMember, currentState, qualifiedName, trySave);
-
-                _variableInCategoryPropagationLogic.PropagateVariablesInCategory(qualifiedName, parentElement,
-                    // This code used to not specify the category, so it defaulted to the selected category.
-                    // I'm maintaining this behavior but I'm not sure if it's what should happen - maybe we should
-                    // serach for the owner category of the state?
-                    _selectedState.SelectedStateCategorySave);
-
-                // Need to record undo before refreshing and reselecting the UI
-                if (recordUndo)
-                {
-                    _undoManager.RecordUndo();
-                }
-
-                if (refresh)
-                {
-                    RefreshInResponseToVariableChange(unqualifiedMember, oldValue, parentElement, instance, qualifiedName);
-
-                }
+                // see comment by ReactToChangedMember about why we make this call here
+                // Also this should happen after we update the wireframe so that plugins like
+                // the texture window which depend on the wireframe will have the correct values
+                _pluginManager.VariableSet(parentElement, instance, unqualifiedMember, oldValue);
             }
-
-            // see comment by ReactToChangedMember about why we make this call here
-            // Also this should happen after we update the wireframe so that plugins like
-            // the texture window which depend on the wireframe will have the correct values
-            _pluginManager.VariableSet(parentElement, instance, unqualifiedMember, oldValue);
 
             // This used to only check if values have changed. However, this can cause problems
             // because an intermediary value may change the value, then it gets a full commit. On
-            // the full commit it doesn't save, so we need to save if this is true. 
+            // the full commit it doesn't save, so we need to save if this is true.
             // Update July 22, 2025
             // Plugins may make modifications
             // to the element, so save *after*
@@ -258,7 +269,7 @@ public class SetVariableLogic
         }
     }
 
-    private GeneralResponse ReactToChangedMember(string rootVariableName, object oldValue, IInstanceContainer instanceContainer, InstanceSave instance, StateSave stateSave)
+    private GeneralResponse ReactToChangedMember(string rootVariableName, object? oldValue, IInstanceContainer instanceContainer, InstanceSave instance, StateSave stateSave)
     {
         var response = ReactIfChangedMemberIsName(instanceContainer, instance, rootVariableName, oldValue);
 
@@ -289,7 +300,7 @@ public class SetVariableLogic
 
             ReactIfChangedMemberIsTextureAddress(parentElement, rootVariableName, oldValue);
 
-            ReactIfChangedMemberIsParent(parentElement, instance, rootVariableName, oldValue);
+            ReactIfChangedMemberIsParent(parentElement, instance, rootVariableName, oldValue, response);
 
             ReactIfChangedMemberIsDefaultChildContainer(parentElement, instance, rootVariableName, oldValue);
 
@@ -305,8 +316,6 @@ public class SetVariableLogic
 
         if (rootVariableName == "BaseType")
         {
-            VariableSave variable = _selectedState.SelectedVariableSave;
-
             if (instance != null)
             {
                 var parentElement = instanceContainer as ElementSave;
@@ -314,7 +323,6 @@ public class SetVariableLogic
                 if(parentElement != null && _circularReferenceManager.CanTypeBeAddedToElement(parentElement, instance.BaseType) == false)
                 {
                     _dialogService.ShowMessage("This assignment would create a circular reference, which is not allowed.");
-                    //stateSave.SetValue("BaseType", oldValue, instance);
                     instance.BaseType = (string)oldValue;
                     _guiCommands.PrintOutput($"BaseType assignment on {instance.Name} is not allowed - reverting to previous value");
                     _guiCommands.RefreshVariables(force: true);
@@ -332,7 +340,7 @@ public class SetVariableLogic
     {
         VariableSave variable = _selectedState.SelectedVariableSave;
 
-        if (variable != null && rootVariableName == nameof(ComponentSave.DefaultChildContainer))
+        if (variable != null && rootVariableName == "DefaultChildContainer")
         {
             if ((variable.Value as string) == "<NONE>")
             {
@@ -354,7 +362,7 @@ public class SetVariableLogic
         return toReturn;
     }
 
-    private void ReactIfChangedMemberIsFont(List<ElementWithState> elementStack, InstanceSave instance, string changedMember, object oldValue, object newValue)
+    private void ReactIfChangedMemberIsFont(List<ElementWithState> elementStack, InstanceSave? instance, string changedMember, object oldValue, object newValue)
     {
         var handledByInner = false;
         var instanceElement = instance != null ? ObjectFinder.Self.GetElementSave(instance) : null;
@@ -415,7 +423,7 @@ public class SetVariableLogic
                 }
 
 
-                _fontManager.ReactToFontValueSet(instance, GumState.Self.ProjectState.GumProjectSave, stateSave, forcedValues);
+                _fontManager.ReactToFontValueSet(instance, _projectState.GumProjectSave, stateSave, forcedValues);
             }
         }
 
@@ -437,7 +445,7 @@ public class SetVariableLogic
         var wereUnitValuesChanged =
             changedMember == "XUnits" || changedMember == "YUnits" || changedMember == "WidthUnits" || changedMember == "HeightUnits";
 
-        var shouldAttemptValueChange = wereUnitValuesChanged && ProjectManager.Self.GumProjectSave?.ConvertVariablesOnUnitTypeChange == true;
+        var shouldAttemptValueChange = wereUnitValuesChanged && _projectState.GumProjectSave?.ConvertVariablesOnUnitTypeChange == true;
 
         if (shouldAttemptValueChange)
         {
@@ -474,7 +482,7 @@ public class SetVariableLogic
                 float outY = 0;
 
                 bool isWidthOrHeight = false;
-                
+
                 object unitTypeAsObject = _elementCommands.GetCurrentValueForVariable(changedMember, _selectedState.SelectedInstance);
                 GeneralUnitType unitType = UnitConverter.ConvertToGeneralUnit(unitTypeAsObject);
 
@@ -596,16 +604,16 @@ public class SetVariableLogic
 
             if (!string.IsNullOrEmpty(value))
             {
-                var filePath = new FilePath(ProjectState.Self.ProjectDirectory + value);
+                var filePath = new FilePath(_projectState.ProjectDirectory + value);
 
                 // See if this is relative to the project
                 var shouldAskToCopy = !FileManager.IsRelativeTo(
                     filePath.FullPath,
-                    ProjectState.Self.ProjectDirectory) && !FileManager.IsUrl(variable.Value as string);
+                    _projectState.ProjectDirectory) && !FileManager.IsUrl(variable.Value as string);
 
                 if (shouldAskToCopy &&
-                    !string.IsNullOrEmpty(ProjectState.Self.GumProjectSave?.ParentProjectRoot) &&
-                     FileManager.IsRelativeTo(filePath.FullPath, ProjectState.Self.ProjectDirectory + ProjectState.Self.GumProjectSave.ParentProjectRoot))
+                    !string.IsNullOrEmpty(_projectState.GumProjectSave?.ParentProjectRoot) &&
+                     FileManager.IsRelativeTo(filePath.FullPath, _projectState.ProjectDirectory + _projectState.GumProjectSave.ParentProjectRoot))
                 {
                     shouldAskToCopy = false;
                 }
@@ -690,7 +698,7 @@ public class SetVariableLogic
 
         if (string.IsNullOrEmpty(whyInvalid))
         {
-            var gumProject = ProjectState.Self.GumProjectSave;
+            var gumProject = _projectState.GumProjectSave;
             if (gumProject.RestrictFileNamesForAndroid)
             {
                 var strippedName =
@@ -708,7 +716,7 @@ public class SetVariableLogic
 
         // Ask the user what to do - make it relative?
         string message = "The file\n" + value + "\nis not relative to the project.  What would you like to do?";
-        
+
         DialogChoices<string> choices = new()
         {
             ["reference-current"] = "Reference the file in its current location",
@@ -716,10 +724,10 @@ public class SetVariableLogic
         };
 
         string? result = _dialogService.ShowChoices(message, choices, canCancel: true);
-        
+
         if (result == "copy-relative")
         {
-            string directory = FileManager.GetDirectory(ProjectManager.Self.GumProjectSave.FullFileName);
+            string directory = FileManager.GetDirectory(_projectState.GumProjectSave.FullFileName);
             string targetAbsoluteFile = directory + FileManager.RemovePath(value);
 
             shouldCopy = true;
@@ -762,7 +770,7 @@ public class SetVariableLogic
 
     private void PerformCopy(VariableSave variable, string value)
     {
-        string directory = FileManager.GetDirectory(ProjectManager.Self.GumProjectSave.FullFileName);
+        string directory = FileManager.GetDirectory(_projectState.GumProjectSave.FullFileName);
         string targetAbsoluteFile = directory + FileManager.RemovePath(value);
         try
         {
@@ -786,13 +794,11 @@ public class SetVariableLogic
 
     }
 
-    private void ReactIfChangedMemberIsParent(ElementSave parentElement, InstanceSave instance, string changedMember, object oldValue)
+    private void ReactIfChangedMemberIsParent(ElementSave parentElement, InstanceSave instance, string changedMember, object oldValue, GeneralResponse response)
     {
-        bool isValidAssignment = true;
-
         VariableSave variable = _selectedState.SelectedVariableSave;
         // Eventually need to handle tunneled variables
-        if (variable != null && changedMember == "Parent")
+        if (variable != null && changedMember == "Parent" && response.Succeeded)
         {
             if ((variable.Value as string) == "<NONE>")
             {
@@ -801,27 +807,43 @@ public class SetVariableLogic
 
             if (variable.Value != null)
             {
-                var newParent = parentElement.Instances.FirstOrDefault(item => item.Name == variable.Value as string);
-                var newValue = variable.Value;
-                // unset it before finding recursive children, in case there is a circular reference:
-                variable.Value = null;
-                var childrenInstances = GetRecursiveChildrenOf(parentElement, instance);
-
-                if (childrenInstances.Contains(newParent))
+                var newName = (string)variable.Value;
+                if(newName == instance.Name)
                 {
-                    // uh oh, circular referenced detected, don't allow it!
-                    _dialogService.ShowMessage("This parent assignment would produce a circular reference, which is not allowed.");
-                    variable.Value = oldValue;
-                    isValidAssignment = false;
+                    response.Succeeded = false;
+                    response.Message = $"The instance {newName} cannot set itself as its parent";
                 }
-                else
+
+                if(response.Succeeded)
                 {
-                    // set it back:
-                    variable.Value = newValue;
+                    var newParent = parentElement.Instances.FirstOrDefault(item => item.Name == newName);
+                    var newValue = variable.Value;
+                    // unset it before finding recursive children, in case there is a circular reference:
+                    variable.Value = null;
+                    var childrenInstances = GetRecursiveChildrenOf(parentElement, instance);
+
+                    if (childrenInstances.Contains(newParent))
+                    {
+                        // uh oh, circular referenced detected, don't allow it!
+                        response.Succeeded = false;
+                        string message = "This parent assignment would produce a circular reference, which is not allowed.";
+                        response.Message = message;
+                        _dialogService.ShowMessage(message);
+                    }
+                    else
+                    {
+                        // set it back:
+                        variable.Value = newValue;
+                    }
+                }
+
+                if(!response.Succeeded)
+                {
+                    variable.Value = oldValue;
                 }
             }
 
-            if (isValidAssignment)
+            if (response.Succeeded)
             {
                 _guiCommands.RefreshElementTreeView(parentElement);
             }
@@ -886,7 +908,7 @@ public class SetVariableLogic
 
                 if (!string.IsNullOrEmpty(sourceFile))
                 {
-                    string absolute = ProjectManager.Self.MakeAbsoluteIfNecessary(sourceFile);
+                    string absolute = _projectManager.MakeAbsoluteIfNecessary(sourceFile);
 
                     if (System.IO.File.Exists(absolute))
                     {
@@ -932,6 +954,21 @@ public class SetVariableLogic
         {
             return variableName;
         }
+    }
+
+    public GeneralResponse PropertyValueChangedOnBehaviorInstance(string memberName, object? oldValue,
+        BehaviorSave behavior, BehaviorInstanceSave instance)
+    {
+        if (memberName == "Name")
+        {
+            var renameResponse = _renameLogic.HandleRename(behavior, instance, (string)oldValue, NameChangeAction.Rename);
+            if (!renameResponse.Succeeded)
+            {
+                return renameResponse;
+            }
+            _pluginManager.InstanceRename(null, instance, (string)oldValue);
+        }
+        return GeneralResponse.SuccessfulResponse;
     }
 
 }

@@ -11,6 +11,7 @@ using Gum.Managers;
 using Gum.Commands;
 using Gum.Services;
 using Gum.Services.Dialogs;
+using Gum.ToolStates;
 
 namespace CodeOutputPlugin.Manager;
 
@@ -22,14 +23,15 @@ internal class CodeGenerationService
     private readonly IGuiCommands _guiCommands;
     private readonly IDialogService _dialogService;
 
-    public CodeGenerationService(IGuiCommands guiCommands, CodeGenerator codeGenerator, 
+    public CodeGenerationService(IGuiCommands guiCommands, CodeGenerator codeGenerator,
         IDialogService dialogService,
         CustomCodeGenerator customCodeGenerator,
-        CodeGenerationNameVerifier nameVerifier)
+        CodeGenerationNameVerifier nameVerifier,
+        IProjectState projectState)
     {
         _codeGenerator = codeGenerator;
         _customCodeGenerator = customCodeGenerator;
-        _codeGenerationFileLocationsService = new CodeGenerationFileLocationsService(_codeGenerator, nameVerifier);
+        _codeGenerationFileLocationsService = new CodeGenerationFileLocationsService(_codeGenerator, nameVerifier, projectState);
         _guiCommands = guiCommands;
         _dialogService = dialogService;
     }
@@ -82,7 +84,7 @@ internal class CodeGenerationService
                     {
                         var settings = CodeOutputElementSettingsManager.LoadOrCreateSettingsFor(item);
                         var generatedFileName = _codeGenerationFileLocationsService.GetGeneratedFileName(item, settings, codeOutputProjectSettings, visualApi);
-                        return generatedFileName.Exists() == false;
+                        return generatedFileName?.Exists() == false;
                     }
                 })
                 .ToList();
@@ -139,7 +141,7 @@ internal class CodeGenerationService
 
         var hasDirectory = true;
 
-        if (!System.IO.Directory.Exists(codeDirectory.FullPath))
+        if (codeDirectory != null && !System.IO.Directory.Exists(codeDirectory.FullPath))
         {
             hasDirectory = false;
             try

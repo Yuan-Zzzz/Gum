@@ -59,10 +59,8 @@ public class BitmapFont : IDisposable
 
     #region Properties
 
-    public AtlasedTexture AtlasedTexture
-    {
-        get { return mAtlasedTexture; }
-    }
+    [Obsolete("Atlased textures are no longer supported in Gum as of 2025")]
+    public AtlasedTexture AtlasedTexture => mAtlasedTexture; 
 
     public Texture2D Texture
     {
@@ -75,33 +73,33 @@ public class BitmapFont : IDisposable
         }
     }
 
-    public Texture2D[] Textures
-    {
-        get { return mTextures; }
-    }
+    public Texture2D[] Textures => mTextures; 
 
-    public string FontFile
-    {
-        get { return mFontFile; }
-    }
+    public string FontFile => mFontFile; 
 
-    public string TextureName
-    {
-        get { return mTextureNames[0]; }
-    }
+    public string TextureName => mTextureNames[0]; 
 
-    public int LineHeightInPixels
-    {
-        get { return mLineHeightInPixels; }
-    }
+    /// <summary>
+    /// The number of pixels from the top of the line to the bottom of the line, including ascenders and descenders.
+    /// </summary>
+    public int LineHeightInPixels => mLineHeightInPixels; 
 
+    /// <summary>
+    /// The number of pixels from the top of the line to the baseline.
+    /// </summary>
     public int BaselineY
     {
         get; set;
     }
 
+    /// <summary>
+    /// The number of pixels from the baseline to the bottom of the line.
+    /// </summary>
     public int DescenderHeight => LineHeightInPixels - BaselineY;
 
+    /// <summary>
+    /// An array holding information about each character in the font.
+    /// </summary>
     public BitmapCharacterInfo[] Characters => mCharacterInfo;
 
     #endregion
@@ -617,6 +615,8 @@ public class BitmapFont : IDisposable
     /// <param name="overrideTextRenderingPositionMode"></param>
     /// <param name="lineHeightMultiplier"></param>
     /// <param name="shiftForOutline"></param>
+    /// <param name="overlapDirection">Controls which direction is letters are drawn, so that they can overlap 
+    /// with the letters to the right on top or the left on top.</param>
     /// <returns>The rectangle of the drawn text. This will return the same value regardless of alignment.</returns>
     public FloatRectangle DrawTextLines(List<string> lines, HorizontalAlignment horizontalAlignment,
         object objectRequestingChange, int requiredWidth, List<int> widths,

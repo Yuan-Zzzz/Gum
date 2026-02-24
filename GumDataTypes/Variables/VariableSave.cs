@@ -50,7 +50,7 @@ public class VariableSave
     // should save in performance.
     string name;
     string rootName;
-    string sourceObject;
+    string? sourceObject;
     public string Name
     {
         get => name;
@@ -193,6 +193,9 @@ public class VariableSave
 
     [XmlIgnore]
     public string DetailText { get; set; }
+
+    [XmlIgnore]
+    public string? ToolTipText { get; set; }
 
 
     public VariableSave Clone()

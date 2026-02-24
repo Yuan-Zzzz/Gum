@@ -71,12 +71,10 @@ namespace SkiaGum.Renderables
 
         public override void PreRender()
         {
-            if((DateTime.Now - lastUpdate).TotalSeconds > SecondsBetweenUpdates)
+            if ((DateTime.Now - lastUpdate).TotalSeconds > SecondsBetweenUpdates)
             {
                 needsUpdate = true;
             }
-
-            base.PreRender();
         }
 
         private SkiaSharp.Skottie.Animation GetAnimation()
@@ -90,7 +88,7 @@ namespace SkiaGum.Renderables
                     // todo - support MonoGame loads here using the normal content loader...
 #if GUM
                     var sourceFileAbsolute =
-                        FileManager.RemoveDotDotSlash(Gum.ToolStates.ProjectState.Self.ProjectDirectory + sourceFile);
+                        FileManager.RemoveDotDotSlash(Gum.Services.Locator.GetRequiredService<Gum.ToolStates.IProjectState>().ProjectDirectory + sourceFile);
                     if(System.IO.File.Exists(sourceFileAbsolute))
                     {
                         animation = SkiaSharp.Skottie.Animation.Create(sourceFileAbsolute);

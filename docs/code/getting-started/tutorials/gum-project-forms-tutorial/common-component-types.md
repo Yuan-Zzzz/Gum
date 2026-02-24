@@ -24,7 +24,7 @@ We can add a label to StackPanelInstance by drag+dropping the Label component in
 
 We can change its Text, Color, and Style in the Exposed section in the Variables tab.
 
-<figure><img src="../../../../.gitbook/assets/image (1) (1) (1) (1) (1) (1) (1).png" alt=""><figcaption><p>Common Label properties in Gum</p></figcaption></figure>
+<figure><img src="../../../../.gitbook/assets/image (1) (1) (1) (1) (1) (1) (1) (1) (1).png" alt=""><figcaption><p>Common Label properties in Gum</p></figcaption></figure>
 
 We can override these properties in code through the generated instance. For example, we can modify our TitleScreen's CustomInitialize method to change the label text.
 
@@ -283,6 +283,54 @@ partial void CustomInitialize()
 {% endtabs %}
 
 <figure><img src="../../../../.gitbook/assets/31_05 57 26.gif" alt=""><figcaption><p>ListBox reacting to SelectionChanged event</p></figcaption></figure>
+
+## Menu and MenuItem
+
+Menu is a control which is usually placed at the top of the screen It contains MenUitem instances which can perform commands when clicked, or which can contain sub-items.
+
+We can add a Menu by drag+dropping the Menu into our TitleScreen. Usually Menu instances are added directly to a screen rather than to a container such as a StackPanelInstance.
+
+<figure><img src="../../../../.gitbook/assets/07_05 41 23.png" alt=""><figcaption><p>Menu in Gum tool</p></figcaption></figure>
+
+Notice that the Menu is collapsed. We can add MenuItem instances to the Menu by drag+dropping a MenuItem component onto the MenuInstance.
+
+<figure><img src="../../../../.gitbook/assets/07_05 43 07.png" alt=""><figcaption><p>MenuItem in Menu</p></figcaption></figure>
+
+MenuItems expose a Header variable which can be edited. Additional MenuItem instances can be added to the Menu and they will stack.
+
+<figure><img src="../../../../.gitbook/assets/07_05 45 57.png" alt=""><figcaption><p>Menu with assigned Header value</p></figcaption></figure>
+
+Sub-items can be added by dragging MenuItems onto existing MenuItem instances.
+
+<figure><img src="../../../../.gitbook/assets/07_06 02 09.png" alt=""><figcaption></figcaption></figure>
+
+We can handle the Clicked event to react to clicks on MenuItem instances.
+
+{% tabs %}
+{% tab title="Full Code" %}
+```csharp
+partial void CustomInitialize()
+{
+    MenuItemInstance3.Clicked += (_, _) =>
+        System.Diagnostics.Debug.WriteLine("Menu Item Clicked");
+}
+```
+{% endtab %}
+
+{% tab title="Diff" %}
+```diff
+partial void CustomInitialize()
+{
++    MenuItemInstance3.Clicked += (_, _) =>
++        System.Diagnostics.Debug.WriteLine("Menu Item Clicked");
+}
+```
+{% endtab %}
+{% endtabs %}
+
+<figure><img src="../../../../.gitbook/assets/07_06 11 15.gif" alt=""><figcaption></figcaption></figure>
+
+
 
 ## RadioButton
 

@@ -23,25 +23,29 @@ using System.Threading.Tasks;
 using ToolsUtilitiesStandard.Helpers;
 using System.Net;
 using System.IO;
-using MonoGameGum.Localization;
+using Gum.Localization;
 using System.Security.Policy;
 using Gum.Managers;
 using Microsoft.Xna.Framework.Graphics;
 using Gum.Converters;
 
+#if !FRB
+using MonoGameGum.GueDeriving;
+#endif
+
 #if GUM
 using Gum.Services;
-
-#endif
-
-
-
-
-
-#if GUM
 using Gum.ToolStates;
 #endif
+
+
+
+#if RAYLIB
+namespace RaylibGum.Renderables;
+#else
 namespace Gum.Wireframe;
+#endif
+
 
 public class CustomSetPropertyOnRenderable
 {
@@ -142,9 +146,9 @@ public class CustomSetPropertyOnRenderable
             }
 
         }
-        else if (renderableIpso is Sprite)
+        else if (renderableIpso is Sprite renderableSprite)
         {
-            handled = TrySetPropertyOnSprite(renderableIpso, graphicalUiElement, propertyName, value);
+            handled = TrySetPropertyOnSprite(renderableSprite, graphicalUiElement, propertyName, value);
         }
         else if (renderableIpso is NineSlice)
         {
@@ -281,11 +285,16 @@ public class CustomSetPropertyOnRenderable
             nineSlice.SetSingleTexture((Texture2D)value);
             handled = true;
         }
+        else if(propertyName == nameof(NineSlice.BorderScale))
+        {
+            nineSlice.BorderScale = (float)value;
+            handled = true;
+        }
 
-        // Texture coordiantes like TextureLeft, TextureRight, TextureWidth, and TextureHeight
-        // are handled by GraphicalUiElement so we don't have to handle it here
+            // Texture coordiantes like TextureLeft, TextureRight, TextureWidth, and TextureHeight
+            // are handled by GraphicalUiElement so we don't have to handle it here
 
-        return handled;
+            return handled;
     }
 
     private static void AssignSourceFileOnNineSlice(string value, GraphicalUiElement graphicalUiElement, NineSlice nineSlice)
@@ -357,10 +366,9 @@ public class CustomSetPropertyOnRenderable
         }
     }
 
-    private static bool TrySetPropertyOnSprite(IRenderableIpso renderableIpso, GraphicalUiElement graphicalUiElement, string propertyName, object value)
+    private static bool TrySetPropertyOnSprite(Sprite sprite, GraphicalUiElement graphicalUiElement, string propertyName, object value)
     {
         bool handled = false;
-        var sprite = renderableIpso as Sprite;
 
         if (propertyName == "SourceFile")
         {
@@ -428,7 +436,29 @@ public class CustomSetPropertyOnRenderable
             graphicalUiElement.UpdateLayout();
             handled = true;
         }
-
+#if !FRB
+        else if(propertyName == nameof(SpriteRuntime.RenderTargetTextureSource))
+        {
+            var runtime = graphicalUiElement as SpriteRuntime;
+            if(runtime != null)
+            {
+                if(value == null)
+                {
+                    runtime.RenderTargetTextureSource = null;
+                }
+                else if(value is IRenderableIpso renderableIpso)
+                {
+                    runtime.RenderTargetTextureSource = renderableIpso;
+                }
+                else if(value is string asString)
+                {
+                    runtime.RenderTargetTextureSource = 
+                        (graphicalUiElement.GetTopParent() as GraphicalUiElement)?.GetChildByNameRecursively(asString);
+                }
+                handled = true;
+            }
+        }
+#endif
         return handled;
     }
 
@@ -1073,6 +1103,7 @@ public class CustomSetPropertyOnRenderable
                     // user could have typed anything in there, so who knows if this will succeed. Therefore, try/catch:
                     try
                     {
+                        var projectState = Locator.GetRequiredService<IProjectState>();
                         BmfcSave.CreateBitmapFontFilesIfNecessary(
                             fontSizeStack.Peek(),
                             fontNameStack.Peek(),
@@ -1080,9 +1111,9 @@ public class CustomSetPropertyOnRenderable
                             useFontSmoothingStack.Peek(),
                             isItalicStack.Peek(),
                             isBoldStack.Peek(),
-                            GumState.Self.ProjectState.GumProjectSave?.FontRanges,
-                            GumState.Self.ProjectState.GumProjectSave?.FontSpacingHorizontal ?? 1,
-                            GumState.Self.ProjectState.GumProjectSave?.FontSpacingVertical ?? 1
+                            projectState.GumProjectSave?.FontRanges,
+                            projectState.GumProjectSave?.FontSpacingHorizontal ?? 1,
+                            projectState.GumProjectSave?.FontSpacingVertical ?? 1
 
                             );
                     }
@@ -1137,29 +1168,43 @@ public class CustomSetPropertyOnRenderable
 
     public static void UpdateToFontValues(IText text, GraphicalUiElement graphicalUiElement)
     {
-        // January 28, 2025
-        // If we early-out here,
-        // then the bitmap values
-        // never get assigned. This
-        // means that eventually when
-        // layout is resumed, bitmap values
-        // will get assigned. However, assigning
-        // bitmap values on a Text that has has Width
-        // or Height Units of Relative to Children, the
-        // parent then updates its parents layout. This causes
-        // tons of layout calls when resuming layout on a list box.
-        // Instead, we should assign fonts and mark font as dirty, then
-        // on resume only the parent layout needs to happen.
-        //if (graphicalUiElement.IsLayoutSuspended || GraphicalUiElement.IsAllLayoutSuspended)
-        //{
-        //    graphicalUiElement.IsFontDirty = true;
-        //}
-        // todo: This could make things faster, but it will require
-        // extra calls in generated code, or an "UpdateAll" method
-        //if (!mIsLayoutSuspended && !IsAllLayoutSuspended)
+        // Font deferred-loading system
+        //
+        // This method is the set-by-string path for font properties (Font, FontSize, IsBold, etc.)
+        // reached via SetProperty -> SetPropertyOnRenderable -> TrySetPropertyOnText.
+        // The direct-property-setter path goes through GraphicalUiElement.UpdateToFontValues() instead.
+        //
+        // KNOWN GAP: the two paths handle suspension differently:
+        //   - GUE.UpdateToFontValues() defers for BOTH IsAllLayoutSuspended and IsLayoutSuspended.
+        //   - This static method only defers for IsAllLayoutSuspended (see reason below).
+        //   This means that when fonts are set by string during ApplyState (which uses instance-level
+        //   SuspendLayout, not IsAllLayoutSuspended), those font loads still happen immediately.
+        //   Fixing that gap requires resolving the cascading-layout issue described below.
+        //
+        // January 28, 2025 - why we cannot simply early-return for IsLayoutSuspended:
+        // If we defer here, bitmap values are not assigned until layout is later resumed via
+        // ResumeLayoutUpdateIfDirtyRecursive. At that point mIsLayoutSuspended is already false,
+        // so when UpdateFontRecursive assigns the BitmapFont to a Text with Width or Height
+        // RelativeToChildren, it triggers UpdateLayout which cascades up through parents that have
+        // already completed their own layout pass. This causes redundant layout calls throughout
+        // a list box or any deeply nested stack. Solving this would require suppressing that
+        // UpdateLayout call inside UpdateToFontValues when called from UpdateFontRecursive, or
+        // performing a single top-down layout pass at the end rather than cascading bottom-up.
+        //
+        // IsAllLayoutSuspended is safe to defer because:
+        //   a) WireframeObjectManager calls RootGue.UpdateFontRecursive() before RootGue.UpdateLayout(),
+        //      so any per-element UpdateLayout calls triggered by font assignment are immediately
+        //      superseded by the full UpdateLayout pass.
+        //   b) mIsLayoutSuspended is always false during IsAllLayoutSuspended (ApplyState skips
+        //      SuspendLayout when the global flag is set), so there is no cascading risk.
+        if (GraphicalUiElement.IsAllLayoutSuspended)
+        {
+            graphicalUiElement.IsFontDirty = true;
+            return;
+        }
 
-        // Residual properties could exist on a Text instnace, so we need to
-        // tolerate a missing item and not crash. 
+        // Residual properties could exist on a Text instance, so we need to
+        // tolerate a missing item and not crash.
 
 #if FRB
         // FRB doesn't yet have a TextRuntime, so we have to do this:

@@ -27,16 +27,16 @@ internal class MainGumFormsPlugin : PluginBase
     public override string FriendlyName => "Gum Forms Plugin";
     public override bool ShutDown(PluginShutDownReason shutDownReason) => true;
 
-    System.Windows.Forms.ToolStripMenuItem _addFormsMenuItem;
+    System.Windows.Controls.MenuItem _addFormsMenuItem;
     private readonly FormsFileService _formsFileService;
-    private readonly ImportLogic _importLogic;
+    private readonly IImportLogic _importLogic;
 
     #endregion
 
     public MainGumFormsPlugin()
     {
         _formsFileService = new FormsFileService();
-        _importLogic = Locator.GetRequiredService<ImportLogic>();
+        _importLogic = Locator.GetRequiredService<IImportLogic>();
     }
 
     public override void StartUp()
@@ -52,7 +52,7 @@ internal class MainGumFormsPlugin : PluginBase
         // see if it already has forms
         var hasForms = GetIfProjectHasForms();
 
-        var parent = _addFormsMenuItem.GetCurrentParent();
+        var parent = _addFormsMenuItem.Parent as System.Windows.Controls.ItemsControl;
         if(hasForms)
         {
             if(parent != null)
@@ -77,18 +77,19 @@ internal class MainGumFormsPlugin : PluginBase
         return files.Values.Any(item => item.Extension != "png" && item.Extension != "gutx" && item.Exists());
     }
 
-    private void HandleAddFormsComponents(object sender, EventArgs e)
+    private void HandleAddFormsComponents(object? sender, System.Windows.RoutedEventArgs e)
     {
+        var projectState = Locator.GetRequiredService<IProjectState>();
         #region Early Out
 
-        if (GumState.Self.ProjectState.NeedsToSaveProject)
+        if (projectState.NeedsToSaveProject)
         {
             _dialogService.ShowMessage("You must first save the project before importing forms");
             return;
         }
         #endregion
 
-        var viewModel = new AddFormsViewModel(_formsFileService, _dialogService, _fileCommands, _importLogic);
+        var viewModel = new AddFormsViewModel(_formsFileService, _dialogService, _fileCommands, _importLogic, projectState);
         _dialogService.Show(viewModel);
     }
 

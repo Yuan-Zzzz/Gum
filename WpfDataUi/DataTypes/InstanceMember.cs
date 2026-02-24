@@ -21,7 +21,7 @@ namespace WpfDataUi.DataTypes
     public class SetPropertyArgs
     {
         public SetPropertyCommitType CommitType { get; set; }
-        public object Value { get; set; }
+        public object? Value { get; set; }
         /// <summary>
         /// Can be assigned to mark that assignment was cancelled. This can be used
         /// by views to react to a cancelled assignment, such as by preventing futher 
@@ -170,7 +170,12 @@ namespace WpfDataUi.DataTypes
             }
             else
             {
-                LateBinder.GetInstance(Instance.GetType()).SetValue(Instance, Name, value);
+                var instanceType = Instance.GetType();
+                if(instanceType != null)
+                {
+                    var instance = LateBinder.GetInstance(instanceType);
+                    instance?.SetValue(Instance, Name, value);
+                }
             }
             OnPropertyChanged("Value");
             OnPropertyChanged(nameof(IsDefault));
@@ -352,7 +357,7 @@ namespace WpfDataUi.DataTypes
 
 
         string detailText;
-        public string DetailText 
+        public string DetailText
         {
             get => detailText;
             set
@@ -361,6 +366,21 @@ namespace WpfDataUi.DataTypes
                 {
                     detailText = value;
                     OnPropertyChanged(nameof(DetailText));
+                }
+            }
+        }
+
+        string? toolTipText;
+        public string? ToolTipText
+        {
+            get => toolTipText;
+            set
+            {
+                var normalizedValue = string.IsNullOrEmpty(value) ? null : value;
+                if (toolTipText != normalizedValue)
+                {
+                    toolTipText = normalizedValue;
+                    OnPropertyChanged(nameof(ToolTipText));
                 }
             }
         }
@@ -390,7 +410,7 @@ namespace WpfDataUi.DataTypes
         /// </example>
         public Action<object> SetValueError;
 
-        public event PropertyChangedEventHandler PropertyChanged;
+        public event PropertyChangedEventHandler? PropertyChanged;
 
         /// <summary>
         /// Provides a custom set event. This is required if the instance member is not part of the
@@ -413,7 +433,7 @@ namespace WpfDataUi.DataTypes
         /// <remarks>
         /// The object passed in is the container of this member - which usually is the Instance of the DataGrid.
         /// </remarks>
-        public event Func<object, object> CustomGetEvent;
+        public event Func<object, object?> CustomGetEvent;
         public event Func<object, Type> CustomGetTypeEvent;
 
         #endregion

@@ -277,14 +277,15 @@ public static class StateSaveExtensionMethods
 
 
     /// <summary>
-    /// Returns the first instance of an existing VariableSave recursively. 
+    /// Returns the first instance of an existing VariableSave recursively. Returns null if not found.
     /// </summary>
-    /// <param name="stateSave">The possible state that contains the variable. If it doesn't, then the code will recursively go to base types.</param>
+    /// <param name="stateSave">The possible state that contains the variable. 
+    /// If it doesn't, then the code will recursively go to base types.</param>
     /// <param name="variableName"></param>
     /// <returns></returns>
-    public static VariableSave GetVariableRecursive(this StateSave stateSave, string variableName)
+    public static VariableSave? GetVariableRecursive(this StateSave stateSave, string variableName)
     {
-        VariableSave variableSave = stateSave.GetVariableSave(variableName);
+        VariableSave? variableSave = stateSave.GetVariableSave(variableName);
 
         if (variableSave == null)
         {
@@ -517,7 +518,7 @@ public static class StateSaveExtensionMethods
     /// <param name="instanceSave">The instance modified by the variable.</param>
     /// <param name="variableType">The type of the variable. If this is a VariableList, then the type of the items inside the list (like int)</param>
     public static void SetValue(this StateSave stateSave, string variableName, object value,
-        InstanceSave instanceSave = null, string variableType = null)
+        InstanceSave? instanceSave = null, string? variableType = null)
     {
         bool isReservedName = TrySetReservedValues(stateSave, variableName, value, instanceSave);
 
@@ -669,6 +670,11 @@ public static class StateSaveExtensionMethods
             else if (variableName.EndsWith(".Locked"))
             {
                 instanceSave.Locked = (bool)value;
+                isReservedName = true;
+            }
+            else if (variableName.EndsWith(".IsSlot"))
+            {
+                instanceSave.IsSlot = (bool)value;
                 isReservedName = true;
             }
         }

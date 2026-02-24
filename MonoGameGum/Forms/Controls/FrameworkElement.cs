@@ -361,6 +361,7 @@ public class FrameworkElement : INotifyPropertyChanged
         set => Visual.MaxWidth = value;
     }
 
+    /// <inheritdoc cref="Gum.Wireframe.GraphicalUiElement.Anchor(Gum.Wireframe.Anchor)" />
     public void Anchor(Anchor anchor) => Visual.Anchor(anchor);
     public void Dock(Dock dock) => Visual.Dock(dock);
 
@@ -654,6 +655,23 @@ public class FrameworkElement : INotifyPropertyChanged
         child.Visual.Parent = this.Visual;
     }
 
+    public virtual void RemoveChild(FrameworkElement child)
+    {
+        if (child.Visual == null)
+        {
+            throw new InvalidOperationException($"The child of type {child.GetType()} must have a Visual before being removed from the parent");
+        }
+        if (this.Visual == null)
+        {
+            throw new InvalidOperationException("This must have its Visual set before having children removed");
+        }
+        if (child.Visual.Parent != this.Visual)
+        {
+            throw new InvalidOperationException("The child being removed is not actually a child of this element");
+        }
+        child.Visual.Parent = null;
+    }
+
     public virtual void AddChild(GraphicalUiElement child)
     {
         if(child == null)
@@ -666,7 +684,23 @@ public class FrameworkElement : INotifyPropertyChanged
         }
 
         child.Parent = this.Visual;
+    }
 
+    public virtual void RemoveChild(GraphicalUiElement child)
+    {
+        if (child == null)
+        {
+            throw new InvalidOperationException($"The child of type {child.GetType()} must have a Visual before being removed from the parent");
+        }
+        if (this.Visual == null)
+        {
+            throw new InvalidOperationException("This must have its Visual set before having children removed");
+        }
+        if (child.Parent != this.Visual)
+        {
+            throw new InvalidOperationException("The child being removed is not actually a child of this element");
+        }
+        child.Parent = null;
     }
 
     public void Close()
@@ -809,8 +843,8 @@ public class FrameworkElement : INotifyPropertyChanged
 #endif
     {
         var isOnThisOrChild =
-            cursor.WindowOver == this.Visual ||
-            (cursor.WindowOver != null && cursor.WindowOver.IsInParentChain(this.Visual));
+            cursor.VisualOver == this.Visual ||
+            (cursor.VisualOver != null && cursor.VisualOver.IsInParentChain(this.Visual));
 
         return isOnThisOrChild;
     }

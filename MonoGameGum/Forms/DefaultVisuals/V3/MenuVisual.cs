@@ -49,6 +49,7 @@ public class MenuVisual : InteractiveGue
 
     public MenuVisual(bool fullInstantiation = true, bool tryCreateFormsObject = true) : base(new InvisibleRenderable())
     {
+        this.HasEvents = true;
         X = 0;
         XUnits = GeneralUnitType.PixelsFromMiddle;
         Y = 0;
@@ -107,5 +108,5 @@ public class MenuVisual : InteractiveGue
         }
     }
 
-    public Menu FormsControl => FormsControlAsObject as Menu;
+    public Menu FormsControl => (Menu)FormsControlAsObject;
 }

@@ -15,6 +15,7 @@ internal class DefaultMenuRuntime : InteractiveGue
 {
     public DefaultMenuRuntime(bool fullInstantiation = true, bool tryCreateFormsObject = true) : base(new InvisibleRenderable())
     {
+        this.HasEvents = true;
         if(fullInstantiation)
         {
             this.Width = 0;
@@ -49,6 +50,7 @@ internal class DefaultMenuRuntime : InteractiveGue
             InnerPanel.WidthUnits = global::Gum.DataTypes.DimensionUnitType.RelativeToParent;
             InnerPanel.WrapsChildren = true;
             InnerPanel.ChildrenLayout = Gum.Managers.ChildrenLayout.LeftToRightStack;
+            InnerPanel.HasEvents = false;
             this.Children.Add(InnerPanel);
 
             var menuCategory = new Gum.DataTypes.Variables.StateSaveCategory();

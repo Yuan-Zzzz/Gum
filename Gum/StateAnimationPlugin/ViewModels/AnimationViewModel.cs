@@ -20,7 +20,6 @@ using System.Windows.Media.Imaging;
 using CommunityToolkit.Mvvm.Input;
 using Gum.Services;
 using Gum.StateAnimation.Runtime;
-using Gum.Plugins.Errors;
 
 namespace StateAnimationPlugin.ViewModels;
 
@@ -34,7 +33,7 @@ public partial class AnimationViewModel : ViewModel
     BitmapFrame mPlayOnceBitmap;
     
     private readonly ISelectedState _selectedState;
-    private readonly WireframeObjectManager _wireframeObjectManager;
+    private readonly IWireframeObjectManager _wireframeObjectManager;
     AnimationRuntime? _cachedAnimationRuntime;
 
     #endregion
@@ -129,7 +128,7 @@ public partial class AnimationViewModel : ViewModel
 
         mPlayOnceBitmap = BitmapLoader.Self.LoadImage("PlayOnceIcon.png");
         _selectedState = Locator.GetRequiredService<ISelectedState>();
-        _wireframeObjectManager = Locator.GetRequiredService<WireframeObjectManager>();
+        _wireframeObjectManager = Locator.GetRequiredService<IWireframeObjectManager>();
     }
 
     public AnimationViewModel Clone()

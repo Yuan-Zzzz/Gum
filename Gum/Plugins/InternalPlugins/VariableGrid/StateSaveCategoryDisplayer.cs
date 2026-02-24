@@ -1,4 +1,4 @@
-﻿using Gum.DataTypes;
+using Gum.DataTypes;
 using Gum.DataTypes.Behaviors;
 using Gum.DataTypes.Variables;
 using Gum.Plugins.VariableGrid;
@@ -12,12 +12,15 @@ namespace Gum.Plugins.InternalPlugins.VariableGrid
 {
     internal class StateSaveCategoryDisplayer
     {
-        public static void DisplayMembersForCategoryInElement(InstanceSave instance, List<MemberCategory> categories, StateSaveCategory stateCategory)
-        {
-            // todo - inject this 
-            var _variableInCategoryPropagationLogic = 
-                Locator.GetRequiredService<IVariableInCategoryPropagationLogic>();
+        private readonly IVariableInCategoryPropagationLogic _variableInCategoryPropagationLogic;
 
+        public StateSaveCategoryDisplayer(IVariableInCategoryPropagationLogic variableInCategoryPropagationLogic)
+        {
+            _variableInCategoryPropagationLogic = variableInCategoryPropagationLogic;
+        }
+
+        public void DisplayMembersForCategoryInElement(InstanceSave instance, List<MemberCategory> categories, StateSaveCategory stateCategory)
+        {
             categories.Clear();
 
             List<string> commonMembers = new List<string>();
@@ -60,7 +63,7 @@ namespace Gum.Plugins.InternalPlugins.VariableGrid
                     instanceMember.Name = commonMember;
                     instanceMember.CustomGetTypeEvent += (member) => typeof(string);
                     instanceMember.CustomGetEvent += (member) => commonMember;
-                    instanceMember.CustomSetEvent += (not, used) =>
+                    instanceMember.CustomSetEvent += (_, _) =>
                     {
                         _variableInCategoryPropagationLogic
                             .AskRemoveVariableFromAllStatesInCategory(commonMember, stateCategory);
@@ -78,7 +81,6 @@ namespace Gum.Plugins.InternalPlugins.VariableGrid
             List<MemberCategory> memberCategories = new List<MemberCategory>();
             var memberCategory = new MemberCategory($"{category.Name} Properties");
             memberCategories.Add(memberCategory);
-
 
             return memberCategories;
         }

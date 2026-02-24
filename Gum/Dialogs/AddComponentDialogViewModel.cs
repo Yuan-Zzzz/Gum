@@ -1,5 +1,6 @@
 ﻿using Gum.DataTypes;
 using Gum.Managers;
+using Gum.Services;
 using Gum.Services.Dialogs;
 using Gum.ToolCommands;
 using Gum.ToolStates;
@@ -15,21 +16,24 @@ public class AddComponentDialogViewModel : GetUserStringDialogBaseViewModel
     private readonly INameVerifier _nameVerifier;
     private readonly ISelectedState _selectedState;
     private readonly ProjectCommands _projectCommands;
+    private readonly FileLocations _fileLocations;
 
     public AddComponentDialogViewModel(INameVerifier nameVerifier, 
         ISelectedState selectedState, 
-        ProjectCommands projectCommands)
+        ProjectCommands projectCommands,
+        FileLocations fileLocations)
     {
         _nameVerifier = nameVerifier;
         _selectedState = selectedState;
         _projectCommands = projectCommands;
+        _fileLocations = fileLocations;
     }
 
-    protected override void OnAffirmative()
+    public override void OnAffirmative()
     {
         if (Value is null || Error is not null) return;
 
-        ITreeNode nodeToAddTo = _selectedState.SelectedTreeNode;
+        ITreeNode? nodeToAddTo = _selectedState.SelectedTreeNode;
 
         while (nodeToAddTo is { Tag: ComponentSave, Parent: { } parent })
         {
@@ -39,13 +43,14 @@ public class AddComponentDialogViewModel : GetUserStringDialogBaseViewModel
         FilePath? path = nodeToAddTo?.GetFullFilePath();
         if (nodeToAddTo == null || !nodeToAddTo.IsPartOfComponentsFolderStructure())
         {
-            path = GumState.Self.ProjectState.ComponentFilePath;
+            var projectState = Locator.GetRequiredService<IProjectState>();
+            path = projectState.ComponentFilePath;
         }
 
         if (path != null)
         {
             string relativeToComponents = FileManager.MakeRelative(path.StandardizedCaseSensitive,
-                FileLocations.Self.ComponentsFolder, preserveCase: true);
+                _fileLocations.ComponentsFolder, preserveCase: true);
 
             relativeToComponents = relativeToComponents.Replace('\\', '/');
 

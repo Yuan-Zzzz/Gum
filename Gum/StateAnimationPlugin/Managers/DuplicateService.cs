@@ -22,7 +22,7 @@ namespace StateAnimationPlugin.Managers
         
         public void HandleDuplicate(ElementSave oldElement, ElementSave newElement)
         {
-            var project = ProjectManager.Self.GumProjectSave;
+            var project = Locator.GetRequiredService<IProjectManager>().GumProjectSave;
             //////////////////////Early Out////////////////////
             if(project == null)
             {
@@ -47,7 +47,7 @@ namespace StateAnimationPlugin.Managers
                 {
                     var newDirectory = newFile.GetDirectoryContainingThis();
 
-                    if (System.IO.Directory.Exists(newDirectory.FullPath) == false)
+                    if (newDirectory != null && System.IO.Directory.Exists(newDirectory.FullPath) == false)
                     {
                         System.IO.Directory.CreateDirectory(newDirectory.FullPath);
                     }

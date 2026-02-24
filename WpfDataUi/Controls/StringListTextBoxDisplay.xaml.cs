@@ -14,22 +14,29 @@ namespace WpfDataUi.Controls
     /// </summary>
     public partial class StringListTextBoxDisplay : UserControl, IDataUi
     {
-        InstanceMember mInstanceMember;
-        public InstanceMember InstanceMember
+        InstanceMember? _instanceMember;
+        public InstanceMember? InstanceMember
         {
-            get => mInstanceMember;
+            get => _instanceMember;
             set
             {
-                bool instanceMemberChanged = mInstanceMember != value;
-                if (mInstanceMember != null && instanceMemberChanged)
+                bool instanceMemberChanged = _instanceMember != value;
+                if (_instanceMember != null && instanceMemberChanged)
                 {
-                    mInstanceMember.PropertyChanged -= HandlePropertyChange;
+                    _instanceMember.PropertyChanged -= HandlePropertyChange;
                 }
-                mInstanceMember = value;
-                if (mInstanceMember != null && instanceMemberChanged)
+                _instanceMember = value;
+                if (_instanceMember != null && instanceMemberChanged)
                 {
-                    mInstanceMember.PropertyChanged += HandlePropertyChange;
+                    _instanceMember.PropertyChanged += HandlePropertyChange;
                 }
+
+                if (instanceMemberChanged)
+                {
+                    // Clear stale green background from a previous pooled use.
+                    this.TextBox.ClearValue(TextBox.BackgroundProperty);
+                }
+
                 Refresh();
 
             }
@@ -74,7 +81,7 @@ namespace WpfDataUi.Controls
                 //HintTextBlock.Visibility = !string.IsNullOrEmpty(InstanceMember?.DetailText) ? Visibility.Visible : Visibility.Collapsed;
                 //HintTextBlock.Text = InstanceMember?.DetailText;
                 TrySetValueOnUi(InstanceMember?.Value);
-                //RefreshIsEnabled();
+                RefreshIsEnabled();
 
                 SuppressSettingProperty = false;
             }
@@ -144,7 +151,19 @@ namespace WpfDataUi.Controls
             return ApplyValueResult.Success;
         }
 
-        private void HandlePropertyChange(object sender, PropertyChangedEventArgs e)
+        private void RefreshIsEnabled()
+        {
+            if (InstanceMember?.IsReadOnly == true)
+            {
+                this.IsEnabled = false;
+            }
+            else
+            {
+                this.IsEnabled = true;
+            }
+        }
+
+        private void HandlePropertyChange(object? sender, PropertyChangedEventArgs e)
         {
             if (e.PropertyName == nameof(InstanceMember.Value))
             {
@@ -156,7 +175,7 @@ namespace WpfDataUi.Controls
 
         public bool HasUserChangedAnything { get; set; }
 
-        private void TextBox_LostFocus(object sender, RoutedEventArgs e)
+        private void TextBox_LostFocus(object? sender, RoutedEventArgs e)
         {
             if (HasUserChangedAnything)
             {
@@ -164,12 +183,12 @@ namespace WpfDataUi.Controls
             }
         }
 
-        private void TextBox_TextChanged(object sender, TextChangedEventArgs e)
+        private void TextBox_TextChanged(object? sender, TextChangedEventArgs e)
         {
             HasUserChangedAnything = true;
         }
 
-        private void TextBox_GotFocus(object sender, RoutedEventArgs e)
+        private void TextBox_GotFocus(object? sender, RoutedEventArgs e)
         {
             
             HasUserChangedAnything = false;

@@ -19,6 +19,9 @@ using Gum.Commands;
 using Gum.Plugins.InternalPlugins.VariableGrid.ViewModels;
 using Gum.Services.Dialogs;
 using Gum.Wireframe;
+using Gum.Localization;
+using Gum.Reflection;
+using Gum.Plugins;
 
 namespace Gum.Managers;
 
@@ -32,11 +35,14 @@ public partial class PropertyGridManager
     private readonly IGuiCommands _guiCommands;
     private readonly IFileCommands _fileCommands;
     private readonly ObjectFinder _objectFinder;
-    private readonly SetVariableLogic _setVariableLogic;
+    private readonly ISetVariableLogic _setVariableLogic;
     private readonly IDialogService _dialogService;
-    private readonly LocalizationManager _localizationManager;
+    private readonly LocalizationService _localizationService;
     private readonly ITabManager _tabManager;
-    private readonly WireframeObjectManager _wireframeObjectManager;
+    private readonly IWireframeObjectManager _wireframeObjectManager;
+    private readonly TypeManager _typeManager;
+    private readonly IPluginManager _pluginManager;
+    private readonly IProjectState _projectState;
     WpfDataUi.DataUiGrid mVariablesDataGrid;
     MainPropertyGrid mainControl;
 
@@ -53,7 +59,7 @@ public partial class PropertyGridManager
     List<InstanceSave> mLastInstanceSaves = new List<InstanceSave>();
     //InstanceSave mLastInstance;
     StateSave mLastState;
-    StateSaveCategory mLastCategory;
+    StateSaveCategory? mLastCategory;
     BehaviorSave mLastBehaviorSave;
 
     // Making this public allows the plugin to access it. Eventually we will want to migrate
@@ -69,6 +75,7 @@ public partial class PropertyGridManager
     public List<object> ObjectsSuppressingRefresh { get; private set; } = new List<object>();
 
     private ColorPickerLogic _colorPickerLogic;
+    private StateSaveCategoryDisplayer _stateSaveCategoryDisplayer;
 
     #endregion
 
@@ -111,12 +118,17 @@ public partial class PropertyGridManager
             Locator.GetRequiredService<IUndoManager>();
         _guiCommands = Locator.GetRequiredService<IGuiCommands>();
         _objectFinder = ObjectFinder.Self;
-        _setVariableLogic = Locator.GetRequiredService<SetVariableLogic>();
+        _setVariableLogic = Locator.GetRequiredService<ISetVariableLogic>();
         _dialogService = Locator.GetRequiredService<IDialogService>();
         _fileCommands = Locator.GetRequiredService<IFileCommands>();
-        _localizationManager = Locator.GetRequiredService<LocalizationManager>();
+        _localizationService = Locator.GetRequiredService<LocalizationService>();
         _tabManager = Locator.GetRequiredService<ITabManager>();
-        _wireframeObjectManager = Locator.GetRequiredService<WireframeObjectManager>();
+        _wireframeObjectManager = Locator.GetRequiredService<IWireframeObjectManager>();
+        _typeManager = Locator.GetRequiredService<TypeManager>();
+        _pluginManager = Locator.GetRequiredService<IPluginManager>();
+        _projectState = Locator.GetRequiredService<IProjectState>();
+        _stateSaveCategoryDisplayer = new StateSaveCategoryDisplayer(
+            Locator.GetRequiredService<IVariableInCategoryPropagationLogic>());
     }
 
     // Normally plugins will initialize through the PluginManager. This needs to happen earlier (see where it's called for info)
@@ -129,7 +141,12 @@ public partial class PropertyGridManager
             _guiCommands,
             _objectFinder,
             _setVariableLogic);
-        mPropertyGridDisplayer = new ElementSaveDisplayer(new SubtextLogic());
+        mPropertyGridDisplayer = new ElementSaveDisplayer(
+            new SubtextLogic(),
+            _typeManager,
+            _selectedState,
+            _undoManager,
+            _pluginManager);
 
         mainControl = new Gum.MainPropertyGrid();
 
@@ -149,12 +166,12 @@ public partial class PropertyGridManager
         InitializeRightClickMenu();
     }
 
-    private void HandleBehaviorVariableSelected(object sender, EventArgs e)
+    private void HandleBehaviorVariableSelected(object? sender, EventArgs e)
     {
         _selectedState.SelectedBehaviorVariable = PropertyGridManager.Self.SelectedBehaviorVariable;
     }
 
-    private void HandleAddVariable(object sender, EventArgs e)
+    private void HandleAddVariable(object? sender, EventArgs e)
     {
         var canShow = _selectedState.SelectedBehavior != null || _selectedState.SelectedElement != null;
 
@@ -231,8 +248,11 @@ public partial class PropertyGridManager
     /// <param name="state">The state to display.</param>
     /// <param name="instance">The instance to display. May be null.</param>
     /// <param name="force">Whether to refresh even if the element, state, and instance have not changed.</param>
-    private void RefreshDataGrid(ElementSave element, StateSave state, StateSaveCategory stateCategory, List<InstanceSave> newInstances, 
-        BehaviorSave behaviorSave, bool force = false)
+    private void RefreshDataGrid(ElementSave? element, 
+        StateSave? state, 
+        StateSaveCategory? stateCategory, 
+        List<InstanceSave> newInstances, 
+        BehaviorSave? behaviorSave, bool force = false)
     {
         ObjectFinder.Self.EnableCache();
         try
@@ -294,7 +314,7 @@ public partial class PropertyGridManager
                     }
                     else
                     {
-                        categories = GetMemberCategories(element, state, stateCategory, instance);
+                        categories = GetMemberCategories(element, state!, stateCategory, instance);
                     }
 
                     if (newInstances.Count > 1)
@@ -347,37 +367,26 @@ public partial class PropertyGridManager
 
                     mVariablesDataGrid.Instance = (object)behaviorSave ?? _selectedState.SelectedStateSave;
 
-                    mVariablesDataGrid.Categories.Clear();
-
-
                     // April 10, 2023
                     // I am adding multi-select
-                    // editing support. To do this, 
+                    // editing support. To do this,
                     // we call SetMultipleCategoryLists
                     // which creates wrappers for multi-select
-                    // editing. Currently I do this only if more 
+                    // editing. Currently I do this only if more
                     // than one object is selected, in case there
                     // are bugs in multi-select editing which would
                     // cause problems. We may consider having even single
                     // edits use the same code path in the future, but I don't
-                    // feel confident in doing that just yet.                   
+                    // feel confident in doing that just yet.
                     if (listOfCategories.Count == 1)
                     {
-                        foreach (var memberCategory in listOfCategories[0])
+                        if (SimultaneousCalls > 1)
                         {
-
-                            // We used to do this:
-                            // Application.DoEvents();
-                            // That made things go faster,
-                            // but it made the "lock" not work, which could make duplicate UI show up.
-                            mVariablesDataGrid.Categories.Add(memberCategory);
-                            if (SimultaneousCalls > 1)
-                            {
-                                SimultaneousCalls--;
-                                // EARLY OUT!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-                                return;
-                            }
+                            SimultaneousCalls--;
+                            // EARLY OUT!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                            return;
                         }
+                        mVariablesDataGrid.SetCategories(listOfCategories[0]);
                     }
                     else
                     {
@@ -403,22 +412,40 @@ public partial class PropertyGridManager
                         {
                             foreach (MultiSelectInstanceMember member in gridCategory.Members)
                             {
-                                member.CustomSetPropertyEvent += (sender, args) =>
-                                {
-                                    //do just one undo:
-                                    _undoManager.RecordUndo();
+                                IDisposable? undoLock = null;
 
-                                    // and loop through all instances and refrehs:
+                                member.BeforeMultiSet += (args) =>
+                                {
+                                    // Only lock for Full commits to avoid locking during intermediate changes (like dragging sliders)
+                                    if (args.CommitType == SetPropertyCommitType.Full)
+                                    {
+                                        undoLock = _undoManager.RequestLock();
+                                    }
+                                };
+
+                                member.AfterMultiSet += (args) =>
+                                {
+                                    // Dispose lock if it was created
+                                    if (undoLock != null)
+                                    {
+                                        undoLock.Dispose();
+                                        undoLock = null;
+                                    }
+
+                                    // Record undo after all values have been set
+                                    if (args.CommitType == SetPropertyCommitType.Full)
+                                    {
+                                        _undoManager.RecordUndo();
+                                    }
+
+                                    // Loop through all instances and refresh
                                     foreach (var item in member.InstanceMembers)
                                     {
                                         if (item is StateReferencingInstanceMember srim)
                                         {
                                             srim.NotifyVariableLogic((object)srim.InstanceSave ?? srim.ElementSave, args.CommitType);
-
                                         }
-                                        //RefreshInResponseToVariableChange()
                                     }
-                                    //StateReferencingInstanceMember.NotifyVariableLogic(owner, )
                                 };
                             }
                         }
@@ -450,9 +477,20 @@ public partial class PropertyGridManager
 
             RefreshStateLabel(element, stateCategory, state);
 
+            RefreshCategoryNotification(stateCategory, state);
+
             RefreshBehaviorUi(behaviorSave, newInstances, state, stateCategory);
 
-            mVariablesDataGrid.Refresh();
+            // When a structural rebuild happened (hasChangedObjectShowing = true), each control's
+            // InstanceMember setter already called Refresh(). Calling mVariablesDataGrid.Refresh()
+            // here would trigger a second Refresh() on every control via SimulateValueChanged →
+            // PropertyChanged → HandlePropertyChange. Skip it in that case.
+            // When hasChangedObjectShowing = false, existing InstanceMember objects stay in place
+            // and their values may have changed (e.g. after undo), so Refresh() is still needed.
+            if (!hasChangedObjectShowing)
+            {
+                mVariablesDataGrid.Refresh();
+            }
         }
         finally
         {
@@ -465,7 +503,7 @@ public partial class PropertyGridManager
     {
         foreach(var category in categories)
         {
-            category.Members.RemoveAll(item => item.DisplayName == "Name" || item.DisplayName == "Base Type");
+            category.Members.RemoveAll(item => item.DisplayName == "Name" );
         }
     }
 
@@ -475,7 +513,7 @@ public partial class PropertyGridManager
         {
             VariableViewModel.HasStateInformation = System.Windows.Visibility.Collapsed;
         }
-        else if(state == element.DefaultState || state == null)
+        else if(state == null || state == element.DefaultState)
         {
             VariableViewModel.HasStateInformation = System.Windows.Visibility.Collapsed;
         }
@@ -495,6 +533,37 @@ public partial class PropertyGridManager
                 stateName = category.Name + "/" + stateName;
             }
             VariableViewModel.StateInformation = $"Editing state {stateName}";
+        }
+    }
+
+    private void RefreshCategoryNotification(StateSaveCategory? stateCategory, StateSave? state)
+    {
+        if (stateCategory == null || state != null)
+        {
+            VariableViewModel.HasCategoryNotification = System.Windows.Visibility.Collapsed;
+            return;
+        }
+
+        if (stateCategory.States.Count == 0)
+        {
+            VariableViewModel.CategoryNotification = "This category has no states.";
+            VariableViewModel.HasCategoryNotification = System.Windows.Visibility.Visible;
+        }
+        else
+        {
+            var firstState = stateCategory.States[0];
+            var hasVariables = firstState.Variables.Any() || firstState.VariableLists.Any();
+
+            if (!hasVariables)
+            {
+                VariableViewModel.CategoryNotification =
+                    "This category does not set any variables. To set a variable, select a state and change the desired variable.";
+                VariableViewModel.HasCategoryNotification = System.Windows.Visibility.Visible;
+            }
+            else
+            {
+                VariableViewModel.HasCategoryNotification = System.Windows.Visibility.Collapsed;
+            }
         }
     }
 
@@ -557,7 +626,7 @@ public partial class PropertyGridManager
 
         if(asComponent != null)
         {
-            var behaviors = ProjectState.Self.GumProjectSave.Behaviors;
+            var behaviors = _projectState.GumProjectSave.Behaviors;
             var behaviorReferences = asComponent.Behaviors;
 
             string message = null;
@@ -634,7 +703,7 @@ public partial class PropertyGridManager
         return categories;
     }
 
-    private List<MemberCategory> GetMemberCategories(ElementSave instanceOwner, StateSave state, StateSaveCategory stateCategory, InstanceSave instance)
+    private List<MemberCategory> GetMemberCategories(ElementSave instanceOwner, StateSave state, StateSaveCategory? stateCategory, InstanceSave instance)
     {
         List<MemberCategory> categories = new List<MemberCategory>();
 
@@ -654,7 +723,7 @@ public partial class PropertyGridManager
         }
         else if(stateCategory != null)
         {
-            StateSaveCategoryDisplayer.DisplayMembersForCategoryInElement( instance, categories, stateCategory);
+            _stateSaveCategoryDisplayer.DisplayMembersForCategoryInElement(instance, categories, stateCategory);
         }
         return categories;
 
@@ -720,7 +789,7 @@ public partial class PropertyGridManager
 
                     var shouldShowLocalizationUi = (member.CustomOptions?.Count > 0) == false &&
                         baseVariable?.Name == "Text" &&
-                        _localizationManager.HasDatabase;
+                        _localizationService.HasDatabase;
 
                     // See StandardElementsManager for Text on explanation why this is commented out.
                     //if(shouldShowLocalizationUi)
@@ -739,7 +808,7 @@ public partial class PropertyGridManager
                         // give it options!
                         member.PreferredDisplayer = typeof(WpfDataUi.Controls.ComboBoxDisplay);
                         member.PropertiesToSetOnDisplayer[nameof(WpfDataUi.Controls.ComboBoxDisplay.IsEditable)] = true;
-                        member.CustomOptions = _localizationManager.Keys.OrderBy(item => item).ToArray();
+                        member.CustomOptions = _localizationService.Keys.OrderBy(item => item).ToArray();
                     }
                     else if(baseVariable?.Name == "Text")
                     {
@@ -764,7 +833,7 @@ public partial class PropertyGridManager
 
 
 
-    internal void HandleVariableSet(ElementSave element, InstanceSave instance, string strippedName, object oldValue)
+    internal void HandleVariableSet(ElementSave element, InstanceSave? instance, string strippedName, object? oldValue)
     {
         if (strippedName == "VariableReferences")
         {

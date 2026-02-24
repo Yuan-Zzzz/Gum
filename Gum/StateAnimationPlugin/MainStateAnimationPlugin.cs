@@ -8,7 +8,6 @@ using Gum.Managers;
 using Gum.Messages;
 using Gum.Plugins;
 using Gum.Plugins.BaseClasses;
-using Gum.Plugins.Errors;
 using Gum.Responses;
 using Gum.Services;
 using Gum.Services.Dialogs;
@@ -27,8 +26,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Forms;
-using System.Windows.Forms.Integration;
+using System.Windows.Controls;
 
 
 namespace StateAnimationPlugin;
@@ -47,13 +45,13 @@ public class MainStateAnimationPlugin : PluginBase
     private readonly ElementDeleteService _elementDeleteService;
     private readonly RenameManager _renameManager;
     private readonly SettingsManager _settingsManager;
-    private readonly ProjectState _projectState;
+    private readonly IProjectState _projectState;
     private readonly AnimationCollectionViewModelManager _animationCollectionViewModelManager;
     ElementAnimationsViewModel? _viewModel;
 
     StateAnimationPlugin.Views.MainWindow? _mainWindow;
     private PluginTab? pluginTab;
-    private ToolStripMenuItem? menuItem;
+    private MenuItem? menuItem;
 
     #endregion
 
@@ -88,7 +86,7 @@ public class MainStateAnimationPlugin : PluginBase
         _elementDeleteService = new ElementDeleteService(_animationFilePathService);
         _renameManager = RenameManager.Self;
         _settingsManager = SettingsManager.Self;
-        _projectState = GumState.Self.ProjectState;
+        _projectState = Locator.GetRequiredService<IProjectState>();
         _animationCollectionViewModelManager = AnimationCollectionViewModelManager.Self;
     }
 
@@ -261,11 +259,16 @@ public class MainStateAnimationPlugin : PluginBase
 
     }
 
-    private void HandleToggleTabVisibility(object? sender, EventArgs e)
+    private void HandleToggleTabVisibility(object? sender, System.Windows.RoutedEventArgs e)
     {
         if(pluginTab != null)
         {
             pluginTab.IsVisible = !pluginTab.IsVisible;
+
+            if(pluginTab.IsVisible)
+            {
+                pluginTab.IsSelected = true;
+            }
         }
     }
 
@@ -391,7 +394,7 @@ public class MainStateAnimationPlugin : PluginBase
     {
         if (menuItem != null)
         {
-            menuItem.Text = "Hide Animations";
+            menuItem.Header = "Hide Animations";
         }
     }
 
@@ -399,7 +402,7 @@ public class MainStateAnimationPlugin : PluginBase
     {
         if(menuItem != null)
         {
-            menuItem.Text = "View Animations";
+            menuItem.Header = "View Animations";
         }
     }
 
@@ -466,6 +469,7 @@ public class MainStateAnimationPlugin : PluginBase
             {
                 _viewModel.PropertyChanged += HandlePropertyChanged;
                 _viewModel.AnyChange += HandleDataChange;
+                _viewModel.AddStateKeyframeRequested += HandleAddStateKeyframe;
 
                 foreach (var item in _viewModel.Animations)
                 {
