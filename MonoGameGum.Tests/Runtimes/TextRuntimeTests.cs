@@ -237,6 +237,74 @@ $"chars count=223\r\n";
 
     #endregion
 
+    #region GlobalFontScale
+
+    [Fact]
+    public void GlobalFontScale_ShouldAffectAbsoluteHeight_WhenRelativeToChildren()
+    {
+        TextRuntime sut = new();
+        sut.HeightUnits = Gum.DataTypes.DimensionUnitType.RelativeToChildren;
+        sut.Height = 0;
+        sut.Text = "Hello";
+
+        var baseHeight = sut.GetAbsoluteHeight();
+        baseHeight.ShouldBeGreaterThan(0);
+
+        GraphicalUiElement.GlobalFontScale = 2;
+        sut.UpdateLayout();
+
+        sut.GetAbsoluteHeight().ShouldBe(baseHeight * 2);
+    }
+
+    [Fact]
+    public void GlobalFontScale_ShouldAffectAbsoluteWidth_WhenRelativeToChildren()
+    {
+        TextRuntime sut = new();
+        sut.WidthUnits = Gum.DataTypes.DimensionUnitType.RelativeToChildren;
+        sut.Width = 0;
+        sut.Text = "Hello";
+
+        var baseWidth = sut.GetAbsoluteWidth();
+        baseWidth.ShouldBeGreaterThan(0);
+
+        GraphicalUiElement.GlobalFontScale = 2;
+        sut.UpdateLayout();
+
+        sut.GetAbsoluteWidth().ShouldBe(baseWidth * 2);
+    }
+
+    [Fact]
+    public void GlobalFontScale_WrappedTextHeight_ShouldDoubleWhenScaleIsTwo()
+    {
+        TextRuntime sut = new();
+        sut.Text = "Hello";
+
+        var containedText = (Text)sut.RenderableComponent;
+        var baseHeight = containedText.WrappedTextHeight;
+        baseHeight.ShouldBeGreaterThan(0);
+
+        GraphicalUiElement.GlobalFontScale = 2;
+
+        containedText.WrappedTextHeight.ShouldBe(baseHeight * 2);
+    }
+
+    [Fact]
+    public void GlobalFontScale_WrappedTextWidth_ShouldDoubleWhenScaleIsTwo()
+    {
+        TextRuntime sut = new();
+        sut.Text = "Hello";
+
+        var containedText = (Text)sut.RenderableComponent;
+        var baseWidth = containedText.WrappedTextWidth;
+        baseWidth.ShouldBeGreaterThan(0);
+
+        GraphicalUiElement.GlobalFontScale = 2;
+
+        containedText.WrappedTextWidth.ShouldBe(baseWidth * 2);
+    }
+
+    #endregion
+
     #region HasEvents
 
     [Fact]
@@ -421,6 +489,29 @@ $"chars count=223\r\n";
 
         inlineVariables[1].StartIndex.ShouldBe(3, "Because \\r character should not be included, so the newline 0 character starts at index 3");
         inlineVariables[1].CharacterCount.ShouldBe(1);
+    }
+
+    [Fact]
+    public void Text_WithBbCode_ShouldReParseInlineVariables_WhenFontSizeChanges()
+    {
+        TextRuntime textRuntime = new();
+        textRuntime.Text = "[Color=Green]Hello[/Color] World";
+
+        var internalText = (RenderingLibrary.Graphics.Text)textRuntime.RenderableComponent;
+        var originalCount = internalText.InlineVariables.Count;
+        originalCount.ShouldBe(1);
+
+        var originalVariable = internalText.InlineVariables[0];
+
+        // Act — change a font property, which should re-parse the BBCode
+        textRuntime.FontSize = 24;
+
+        // Assert — InlineVariables should be rebuilt, not accumulated or stale
+        internalText.InlineVariables.Count.ShouldBe(originalCount);
+        internalText.InlineVariables[0].ShouldNotBeSameAs(originalVariable);
+        internalText.InlineVariables[0].VariableName.ShouldBe("Color");
+        internalText.InlineVariables[0].StartIndex.ShouldBe(0);
+        internalText.InlineVariables[0].CharacterCount.ShouldBe(5);
     }
 
     #endregion

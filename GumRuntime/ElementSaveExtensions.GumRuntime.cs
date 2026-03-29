@@ -10,6 +10,8 @@ using Gum.DataTypes.Variables;
 using Gum.Managers;
 using System.ComponentModel;
 using System.Text;
+using Gum.Collections;
+
 
 #if !FRB
 using Gum.StateAnimation.Runtime;
@@ -49,6 +51,15 @@ namespace GumRuntime
         public static void RegisterDefaultInstantiationType<T>(Func<T> templateFunc) where T : GraphicalUiElement
         {
             TemplateFunc = templateFunc;
+        }
+
+        public static void ClearRegistrations()
+        {
+            mElementToGueTypes.Clear();
+            mElementToGueTypeFuncs.Clear();
+            TemplateFunc = null;
+            CustomCreateGraphicalComponentFunc = null;
+            CustomEvaluateExpression = null;
         }
 
 
@@ -161,13 +172,16 @@ namespace GumRuntime
                     {
                         toReturn = TryCreateStrongTypeForElement(baseElement, fullInstantiation, genericType);
                     }
+                    // If it has a base type, but we can't resolve it, it's an error.
+                    // We can still create something useful to avoid falling apart here:
+                    toReturn = toReturn ?? new GraphicalUiElement(new InvisibleRenderable());
                 }
             }
 
             return toReturn;
         }
 
-        public static GraphicalUiElement ToGraphicalUiElement(this ElementSave elementSave, 
+        public static GraphicalUiElement ToGraphicalUiElement(this ElementSave elementSave,
             ISystemManagers systemManagers,
             bool addToManagers, string? genericType = null)
         {
@@ -526,6 +540,14 @@ namespace GumRuntime
 
         private static object GetRightSideValue(StateSave stateSave, string right, string leftSideType)
         {
+            if (right.TrimStart().StartsWith("!"))
+            {
+                var withoutNot = right.TrimStart().Substring(1).Trim();
+                var originalValue = GetRightSideValue(stateSave, withoutNot, leftSideType);
+                if (originalValue is bool boolValue) return !boolValue;
+                return null;
+            }
+
             if(CustomEvaluateExpression != null)
             {
                 return CustomEvaluateExpression(stateSave, right, leftSideType);

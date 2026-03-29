@@ -16,6 +16,7 @@ using System.Threading.Tasks;
 using Gum.Services;
 using Gum.Services.Dialogs;
 using ToolsUtilities;
+using Gum.Logic.FileWatch;
 
 namespace GumFormsPlugin;
 
@@ -30,6 +31,7 @@ internal class MainGumFormsPlugin : PluginBase
     System.Windows.Controls.MenuItem _addFormsMenuItem;
     private readonly FormsFileService _formsFileService;
     private readonly IImportLogic _importLogic;
+    private readonly IFileWatchManager _fileWatchManager;
 
     #endregion
 
@@ -37,6 +39,7 @@ internal class MainGumFormsPlugin : PluginBase
     {
         _formsFileService = new FormsFileService();
         _importLogic = Locator.GetRequiredService<IImportLogic>();
+        _fileWatchManager = Locator.GetRequiredService<IFileWatchManager>();
     }
 
     public override void StartUp()
@@ -45,24 +48,36 @@ internal class MainGumFormsPlugin : PluginBase
             this.AddMenuItemTo("Add Forms Components", HandleAddFormsComponents, "Content");
 
         this.ProjectLoad += HandleProjectLoaded;
+        this.AfterProjectSave += HandleProjectSave;
+    }
+
+    private void HandleProjectSave(GumProjectSave save)
+    {
+        RefreshAddFormsMenuPresence(save);
     }
 
     private void HandleProjectLoaded(GumProjectSave save)
     {
-        // see if it already has forms
-        var hasForms = GetIfProjectHasForms();
+        RefreshAddFormsMenuPresence(save);
+    }
+
+    private void RefreshAddFormsMenuPresence(GumProjectSave save)
+    {
+        // A newly created project has no FullFileName yet, so it cannot have forms.
+        // Checking the save parameter directly avoids any stale state in projectState.
+        var hasForms = !string.IsNullOrEmpty(save?.FullFileName) && GetIfProjectHasForms();
 
         var parent = _addFormsMenuItem.Parent as System.Windows.Controls.ItemsControl;
-        if(hasForms)
+        if (hasForms)
         {
-            if(parent != null)
+            if (parent != null)
             {
                 parent.Items.Remove(_addFormsMenuItem);
             }
         }
         else
         {
-            if(parent == null)
+            if (parent == null)
             {
                 _addFormsMenuItem =
                     this.AddMenuItemTo("Add Forms Components", HandleAddFormsComponents, "Content");
@@ -74,12 +89,23 @@ internal class MainGumFormsPlugin : PluginBase
     {
         var files = _formsFileService.GetSourceDestinations(false);
 
-        return files.Values.Any(item => item.Extension != "png" && item.Extension != "gutx" && item.Exists());
+        var firstMatch = files.Values
+            .FirstOrDefault(item => 
+                item.Extension != "png" && 
+                item.Extension != "gutx" &&
+                item.Extension != "fnt" && 
+                item.Extension != "bmfc" &&
+                item.Extension != "setj" &&
+                item.Extension != "json" &&
+                item.Exists());
+
+        return firstMatch != null;
     }
 
     private void HandleAddFormsComponents(object? sender, System.Windows.RoutedEventArgs e)
     {
         var projectState = Locator.GetRequiredService<IProjectState>();
+
         #region Early Out
 
         if (projectState.NeedsToSaveProject)
@@ -89,7 +115,13 @@ internal class MainGumFormsPlugin : PluginBase
         }
         #endregion
 
-        var viewModel = new AddFormsViewModel(_formsFileService, _dialogService, _fileCommands, _importLogic, projectState);
+        var viewModel = new AddFormsViewModel(
+            _formsFileService, 
+            _dialogService,
+            _fileCommands, 
+            _importLogic, 
+            projectState,
+            _fileWatchManager);
         _dialogService.Show(viewModel);
     }
 

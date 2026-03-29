@@ -29,60 +29,81 @@ public class RenameLogicTests : BaseTestClass
             .Setup(x => x.GumProjectSave)
             .Returns(_project);
 
+        // IReferenceFinder is now injected into RenameLogic; set up default returns
+        // so that tests which call rename methods work through the delegation.
+        _mocker.GetMock<IReferenceFinder>()
+            .Setup(x => x.GetReferencesToElement(It.IsAny<ElementSave>(), It.IsAny<string>()))
+            .Returns(new ElementReferences());
+        _mocker.GetMock<IReferenceFinder>()
+            .Setup(x => x.GetReferencesToInstance(It.IsAny<ElementSave>(), It.IsAny<InstanceSave>(), It.IsAny<string>()))
+            .Returns(new InstanceReferences());
+        _mocker.GetMock<IReferenceFinder>()
+            .Setup(x => x.GetReferencesToState(It.IsAny<StateSave>(), It.IsAny<string>(), It.IsAny<IStateContainer>(), It.IsAny<StateSaveCategory>()))
+            .Returns(new StateReferences());
+        _mocker.GetMock<IReferenceFinder>()
+            .Setup(x => x.GetReferencesToStateCategory(It.IsAny<IStateContainer>(), It.IsAny<StateSaveCategory>(), It.IsAny<string>()))
+            .Returns(new CategoryReferences());
+        _mocker.GetMock<IReferenceFinder>()
+            .Setup(x => x.GetReferencesToBehavior(It.IsAny<BehaviorSave>(), It.IsAny<string>()))
+            .Returns(new BehaviorReferences());
+        _mocker.GetMock<IReferenceFinder>()
+            .Setup(x => x.GetReferencesToVariable(It.IsAny<IStateContainer>(), It.IsAny<string>(), It.IsAny<string>()))
+            .Returns(new VariableChangeResponse());
+
         _renameLogic = _mocker.CreateInstance<RenameLogic>();
     }
 
     [Fact]
-    public void ApplyElementRenameChanges_ElementBaseType_IsUpdated()
+    public void ApplyElementReferences_ElementBaseType_IsUpdated()
     {
         // After apply, an element whose BaseType matched oldName should be updated to the new name.
-        var button = new ComponentSave { Name = "ButtonNew" };
+        ComponentSave button = new ComponentSave { Name = "ButtonNew" };
 
-        var screen = new ScreenSave { Name = "TestScreen", BaseType = "Button" };
+        ScreenSave screen = new ScreenSave { Name = "TestScreen", BaseType = "Button" };
         screen.States.Add(new StateSave { Name = "Default", ParentContainer = screen });
 
-        var changes = new ElementRenameChanges();
+        ElementReferences changes = new ElementReferences();
         changes.ElementsWithBaseTypeReference.Add(screen);
 
-        _renameLogic.ApplyElementRenameChanges(changes, button, oldName: "Button");
+        _renameLogic.ApplyElementReferences(changes, button, oldName: "Button");
 
         screen.BaseType.ShouldBe("ButtonNew");
     }
 
     [Fact]
-    public void ApplyElementRenameChanges_InstanceBaseType_IsUpdated()
+    public void ApplyElementReferences_InstanceBaseType_IsUpdated()
     {
         // After apply, an instance whose BaseType matched oldName should be updated to the new name.
-        var button = new ComponentSave { Name = "ButtonNew" };
+        ComponentSave button = new ComponentSave { Name = "ButtonNew" };
 
-        var screen = new ScreenSave { Name = "TestScreen" };
+        ScreenSave screen = new ScreenSave { Name = "TestScreen" };
         screen.States.Add(new StateSave { Name = "Default", ParentContainer = screen });
-        var instance = new InstanceSave { Name = "myButton", BaseType = "Button", ParentContainer = screen };
+        InstanceSave instance = new InstanceSave { Name = "myButton", BaseType = "Button", ParentContainer = screen };
         screen.Instances.Add(instance);
 
-        var changes = new ElementRenameChanges();
+        ElementReferences changes = new ElementReferences();
         changes.InstancesWithBaseTypeReference.Add((screen, instance));
 
-        _renameLogic.ApplyElementRenameChanges(changes, button, oldName: "Button");
+        _renameLogic.ApplyElementReferences(changes, button, oldName: "Button");
 
         instance.BaseType.ShouldBe("ButtonNew");
     }
 
     [Fact]
-    public void ApplyElementRenameChanges_VariableReferenceEntry_StringIsUpdated()
+    public void ApplyElementReferences_VariableReferenceEntry_StringIsUpdated()
     {
         // After apply, a VariableReferences list entry whose right side referenced
         // "Components/Button.SomeProperty" should be rewritten with the new element name.
-        var button = new ComponentSave { Name = "ButtonNew" };
+        ComponentSave button = new ComponentSave { Name = "ButtonNew" };
 
-        var screen = new ScreenSave { Name = "TestScreen" };
-        var defaultState = new StateSave { Name = "Default", ParentContainer = screen };
+        ScreenSave screen = new ScreenSave { Name = "TestScreen" };
+        StateSave defaultState = new StateSave { Name = "Default", ParentContainer = screen };
         screen.States.Add(defaultState);
-        var varRefList = new VariableListSave<string> { Type = "string", Name = "VariableReferences" };
+        VariableListSave<string> varRefList = new VariableListSave<string> { Type = "string", Name = "VariableReferences" };
         varRefList.Value.Add("SomeVar = Components/Button.SomeProperty");
         defaultState.VariableLists.Add(varRefList);
 
-        var changes = new ElementRenameChanges();
+        ElementReferences changes = new ElementReferences();
         changes.VariableReferenceChanges.Add(new VariableReferenceChange
         {
             Container = screen,
@@ -91,192 +112,9 @@ public class RenameLogicTests : BaseTestClass
             ChangedSide = SideOfEquals.Right
         });
 
-        _renameLogic.ApplyElementRenameChanges(changes, button, oldName: "Button");
+        _renameLogic.ApplyElementReferences(changes, button, oldName: "Button");
 
         varRefList.Value[0].ShouldBe("SomeVar = Components/ButtonNew.SomeProperty");
-    }
-
-    [Fact]
-    public void GetChangesForRenamedElement_ComponentBaseType_IsDetected()
-    {
-        // A component that inherits from the renamed element should appear in ElementsWithBaseTypeReference.
-        var button = new ComponentSave { Name = "ButtonNew" };
-        button.States.Add(new StateSave { Name = "Default", ParentContainer = button });
-        _project.Components.Add(button);
-
-        var derivedButton = new ComponentSave { Name = "DerivedButton", BaseType = "Button" };
-        derivedButton.States.Add(new StateSave { Name = "Default", ParentContainer = derivedButton });
-        _project.Components.Add(derivedButton);
-
-        var changes = _renameLogic.GetChangesForRenamedElement(button, oldName: "Button");
-
-        changes.ElementsWithBaseTypeReference.ShouldContain(derivedButton);
-    }
-
-    [Fact]
-    public void GetChangesForRenamedElement_ContainedTypeVariable_IsDetected()
-    {
-        // A ContainedType variable whose value matches oldName should appear in ContainedTypeVariableReferences.
-        var button = new ComponentSave { Name = "ButtonNew" };
-        button.States.Add(new StateSave { Name = "Default", ParentContainer = button });
-        _project.Components.Add(button);
-
-        var listBox = new ComponentSave { Name = "ListBox" };
-        var defaultState = new StateSave { Name = "Default", ParentContainer = listBox };
-        listBox.States.Add(defaultState);
-        var containedTypeVar = new VariableSave { Name = "ContainedType", Value = "Button" };
-        defaultState.Variables.Add(containedTypeVar);
-        _project.Components.Add(listBox);
-
-        var changes = _renameLogic.GetChangesForRenamedElement(button, oldName: "Button");
-
-        changes.ContainedTypeVariableReferences.Count.ShouldBe(1);
-        changes.ContainedTypeVariableReferences[0].Container.ShouldBe(listBox);
-        changes.ContainedTypeVariableReferences[0].Variable.ShouldBe(containedTypeVar);
-    }
-
-    [Fact]
-    public void GetChangesForRenamedElement_InstanceBaseType_IsDetected()
-    {
-        // An instance of the renamed element should appear in InstancesWithBaseTypeReference
-        // with the correct container.
-        var button = new ComponentSave { Name = "ButtonNew" };
-        button.States.Add(new StateSave { Name = "Default", ParentContainer = button });
-        _project.Components.Add(button);
-
-        var screen = new ScreenSave { Name = "TestScreen" };
-        screen.States.Add(new StateSave { Name = "Default", ParentContainer = screen });
-        var instance = new InstanceSave { Name = "myButton", BaseType = "Button", ParentContainer = screen };
-        screen.Instances.Add(instance);
-        _project.Screens.Add(screen);
-
-        var changes = _renameLogic.GetChangesForRenamedElement(button, oldName: "Button");
-
-        changes.InstancesWithBaseTypeReference.Count.ShouldBe(1);
-        changes.InstancesWithBaseTypeReference[0].Container.ShouldBe(screen);
-        changes.InstancesWithBaseTypeReference[0].Instance.ShouldBe(instance);
-    }
-
-    [Fact]
-    public void GetChangesForRenamedElement_NoMatchingReferences_ReturnsEmptyLists()
-    {
-        var button = new ComponentSave { Name = "Button" };
-        button.States.Add(new StateSave { Name = "Default", ParentContainer = button });
-        _project.Components.Add(button);
-
-        var screen = new ScreenSave { Name = "TestScreen" };
-        screen.States.Add(new StateSave { Name = "Default", ParentContainer = screen });
-        _project.Screens.Add(screen);
-
-        var changes = _renameLogic.GetChangesForRenamedElement(button, oldName: "OldButtonName");
-
-        changes.ElementsWithBaseTypeReference.ShouldBeEmpty();
-        changes.InstancesWithBaseTypeReference.ShouldBeEmpty();
-        changes.ContainedTypeVariableReferences.ShouldBeEmpty();
-    }
-
-    [Fact]
-    public void GetChangesForRenamedElement_ScreenBaseType_IsDetected()
-    {
-        // A screen that inherits from the renamed element should appear in ElementsWithBaseTypeReference.
-        var panel = new ComponentSave { Name = "PanelNew" };
-        panel.States.Add(new StateSave { Name = "Default", ParentContainer = panel });
-        _project.Components.Add(panel);
-
-        var screen = new ScreenSave { Name = "MainScreen", BaseType = "Panel" };
-        screen.States.Add(new StateSave { Name = "Default", ParentContainer = screen });
-        _project.Screens.Add(screen);
-
-        var changes = _renameLogic.GetChangesForRenamedElement(panel, oldName: "Panel");
-
-        changes.ElementsWithBaseTypeReference.ShouldContain(screen);
-    }
-
-    [Fact]
-    public void GetChangesForRenamedElement_UnrelatedBaseType_IsNotDetected()
-    {
-        // An element whose BaseType doesn't match oldName should not be collected.
-        var button = new ComponentSave { Name = "ButtonNew" };
-        button.States.Add(new StateSave { Name = "Default", ParentContainer = button });
-        _project.Components.Add(button);
-
-        var otherComponent = new ComponentSave { Name = "OtherComponent", BaseType = "SomeOtherType" };
-        otherComponent.States.Add(new StateSave { Name = "Default", ParentContainer = otherComponent });
-        _project.Components.Add(otherComponent);
-
-        var changes = _renameLogic.GetChangesForRenamedElement(button, oldName: "Button");
-
-        changes.ElementsWithBaseTypeReference.ShouldBeEmpty();
-    }
-
-    [Fact]
-    public void GetChangesForRenamedElement_VariableReferenceRightSideMatchingComponent_IsDetected()
-    {
-        // A VariableReferences entry whose right side is "Components/Button.SomeProperty"
-        // should be detected when the component named "Button" is renamed.
-        var button = new ComponentSave { Name = "ButtonNew" };
-        button.States.Add(new StateSave { Name = "Default", ParentContainer = button });
-        _project.Components.Add(button);
-
-        var screen = new ScreenSave { Name = "TestScreen" };
-        var defaultState = new StateSave { Name = "Default", ParentContainer = screen };
-        screen.States.Add(defaultState);
-        var varRefList = new VariableListSave<string> { Type = "string", Name = "VariableReferences" };
-        varRefList.Value.Add("SomeVar = Components/Button.SomeProperty");
-        defaultState.VariableLists.Add(varRefList);
-        _project.Screens.Add(screen);
-
-        var changes = _renameLogic.GetChangesForRenamedElement(button, oldName: "Button");
-
-        changes.VariableReferenceChanges.Count.ShouldBe(1);
-        changes.VariableReferenceChanges[0].Container.ShouldBe(screen);
-        changes.VariableReferenceChanges[0].LineIndex.ShouldBe(0);
-    }
-
-    [Fact]
-    public void GetChangesForRenamedElement_VariableReferenceRightSideMultipleEntries_OnlyMatchingLineIsDetected()
-    {
-        // A VariableReferences list with two entries — only the one whose right side
-        // references "Components/Button" should be detected; the other should be ignored.
-        var button = new ComponentSave { Name = "ButtonNew" };
-        button.States.Add(new StateSave { Name = "Default", ParentContainer = button });
-        _project.Components.Add(button);
-
-        var screen = new ScreenSave { Name = "TestScreen" };
-        var defaultState = new StateSave { Name = "Default", ParentContainer = screen };
-        screen.States.Add(defaultState);
-        var varRefList = new VariableListSave<string> { Type = "string", Name = "VariableReferences" };
-        varRefList.Value.Add("SomeVar = Components/Button.SomeProperty");
-        varRefList.Value.Add("OtherVar = Components/OtherComponent.SomeProp");
-        defaultState.VariableLists.Add(varRefList);
-        _project.Screens.Add(screen);
-
-        var changes = _renameLogic.GetChangesForRenamedElement(button, oldName: "Button");
-
-        changes.VariableReferenceChanges.Count.ShouldBe(1);
-        changes.VariableReferenceChanges[0].LineIndex.ShouldBe(0);
-    }
-
-    [Fact]
-    public void GetChangesForRenamedElement_VariableReferenceRightSideNonMatchingComponent_IsNotDetected()
-    {
-        // A VariableReferences entry whose right side references a different component
-        // should not be detected.
-        var button = new ComponentSave { Name = "ButtonNew" };
-        button.States.Add(new StateSave { Name = "Default", ParentContainer = button });
-        _project.Components.Add(button);
-
-        var screen = new ScreenSave { Name = "TestScreen" };
-        var defaultState = new StateSave { Name = "Default", ParentContainer = screen };
-        screen.States.Add(defaultState);
-        var varRefList = new VariableListSave<string> { Type = "string", Name = "VariableReferences" };
-        varRefList.Value.Add("SomeVar = Components/OtherComponent.SomeProperty");
-        defaultState.VariableLists.Add(varRefList);
-        _project.Screens.Add(screen);
-
-        var changes = _renameLogic.GetChangesForRenamedElement(button, oldName: "Button");
-
-        changes.VariableReferenceChanges.ShouldBeEmpty();
     }
 
     #region State rename
@@ -284,9 +122,9 @@ public class RenameLogicTests : BaseTestClass
     [Fact]
     public void RenameState_UpdatesStateName()
     {
-        var button = new ComponentSave { Name = "Button" };
-        var category = new StateSaveCategory { Name = "Visibility" };
-        var shownState = new StateSave { Name = "Shown", ParentContainer = button };
+        ComponentSave button = new ComponentSave { Name = "Button" };
+        StateSaveCategory category = new StateSaveCategory { Name = "Visibility" };
+        StateSave shownState = new StateSave { Name = "Shown", ParentContainer = button };
         category.States.Add(shownState);
         button.Categories.Add(category);
         button.States.Add(new StateSave { Name = "Default", ParentContainer = button });
@@ -308,22 +146,28 @@ public class RenameLogicTests : BaseTestClass
         // Button has a "Visibility" category with state "Shown".
         // A screen has an instance of Button with a variable "myButton.VisibilityState = Shown".
         // After renaming "Shown" to "Visible", the variable value should update.
-        var button = new ComponentSave { Name = "Button" };
+        ComponentSave button = new ComponentSave { Name = "Button" };
         button.States.Add(new StateSave { Name = "Default", ParentContainer = button });
-        var visibilityCategory = new StateSaveCategory { Name = "Visibility" };
-        var shownState = new StateSave { Name = "Shown", ParentContainer = button };
+        StateSaveCategory visibilityCategory = new StateSaveCategory { Name = "Visibility" };
+        StateSave shownState = new StateSave { Name = "Shown", ParentContainer = button };
         visibilityCategory.States.Add(shownState);
         button.Categories.Add(visibilityCategory);
         _project.Components.Add(button);
 
-        var screen = new ScreenSave { Name = "TestScreen" };
-        var screenDefault = new StateSave { Name = "Default", ParentContainer = screen };
+        ScreenSave screen = new ScreenSave { Name = "TestScreen" };
+        StateSave screenDefault = new StateSave { Name = "Default", ParentContainer = screen };
         screen.States.Add(screenDefault);
-        var instance = new InstanceSave { Name = "myButton", BaseType = "Button", ParentContainer = screen };
+        InstanceSave instance = new InstanceSave { Name = "myButton", BaseType = "Button", ParentContainer = screen };
         screen.Instances.Add(instance);
-        var stateVar = new VariableSave { Name = "myButton.VisibilityState", Value = "Shown" };
+        VariableSave stateVar = new VariableSave { Name = "myButton.VisibilityState", Value = "Shown" };
         screenDefault.Variables.Add(stateVar);
         _project.Screens.Add(screen);
+
+        StateReferences stateChanges = new StateReferences();
+        stateChanges.VariablesToUpdate.Add((screen, stateVar));
+        _mocker.GetMock<IReferenceFinder>()
+            .Setup(x => x.GetReferencesToState(shownState, "Shown", button, visibilityCategory))
+            .Returns(stateChanges);
 
         string? outValue = null;
         _mocker.GetMock<INameVerifier>()
@@ -336,84 +180,7 @@ public class RenameLogicTests : BaseTestClass
     }
 
     [Fact]
-    public void GetChangesForRenamedState_MatchingVariable_IsDetected()
-    {
-        var button = new ComponentSave { Name = "Button" };
-        button.States.Add(new StateSave { Name = "Default", ParentContainer = button });
-        var visibilityCategory = new StateSaveCategory { Name = "Visibility" };
-        var shownState = new StateSave { Name = "Shown", ParentContainer = button };
-        visibilityCategory.States.Add(shownState);
-        button.Categories.Add(visibilityCategory);
-        _project.Components.Add(button);
-
-        var screen = new ScreenSave { Name = "TestScreen" };
-        var screenDefault = new StateSave { Name = "Default", ParentContainer = screen };
-        screen.States.Add(screenDefault);
-        var instance = new InstanceSave { Name = "myButton", BaseType = "Button", ParentContainer = screen };
-        screen.Instances.Add(instance);
-        var stateVar = new VariableSave { Name = "myButton.VisibilityState", Value = "Shown" };
-        screenDefault.Variables.Add(stateVar);
-        _project.Screens.Add(screen);
-
-        var changes = _renameLogic.GetChangesForRenamedState(shownState, "Shown", button, visibilityCategory);
-
-        changes.VariablesToUpdate.Count.ShouldBe(1);
-        changes.VariablesToUpdate[0].Container.ShouldBe(screen);
-        changes.VariablesToUpdate[0].Variable.ShouldBe(stateVar);
-    }
-
-    [Fact]
-    public void GetChangesForRenamedState_NonMatchingValue_IsNotDetected()
-    {
-        var button = new ComponentSave { Name = "Button" };
-        button.States.Add(new StateSave { Name = "Default", ParentContainer = button });
-        var visibilityCategory = new StateSaveCategory { Name = "Visibility" };
-        var shownState = new StateSave { Name = "Shown", ParentContainer = button };
-        visibilityCategory.States.Add(shownState);
-        button.Categories.Add(visibilityCategory);
-        _project.Components.Add(button);
-
-        var screen = new ScreenSave { Name = "TestScreen" };
-        var screenDefault = new StateSave { Name = "Default", ParentContainer = screen };
-        screen.States.Add(screenDefault);
-        var instance = new InstanceSave { Name = "myButton", BaseType = "Button", ParentContainer = screen };
-        screen.Instances.Add(instance);
-        // Value is "Hidden", not "Shown" — should not match
-        screenDefault.Variables.Add(new VariableSave { Name = "myButton.VisibilityState", Value = "Hidden" });
-        _project.Screens.Add(screen);
-
-        var changes = _renameLogic.GetChangesForRenamedState(shownState, "Shown", button, visibilityCategory);
-
-        changes.VariablesToUpdate.ShouldBeEmpty();
-    }
-
-    [Fact]
-    public void GetChangesForRenamedState_NullCategory_UsesPlainStateVariableName()
-    {
-        // State not in a category — variable name should be "instanceName.State", not "instanceName.CategoryState"
-        var button = new ComponentSave { Name = "Button" };
-        button.States.Add(new StateSave { Name = "Default", ParentContainer = button });
-        var activeState = new StateSave { Name = "Active", ParentContainer = button };
-        button.States.Add(activeState);
-        _project.Components.Add(button);
-
-        var screen = new ScreenSave { Name = "TestScreen" };
-        var screenDefault = new StateSave { Name = "Default", ParentContainer = screen };
-        screen.States.Add(screenDefault);
-        var instance = new InstanceSave { Name = "myButton", BaseType = "Button", ParentContainer = screen };
-        screen.Instances.Add(instance);
-        var stateVar = new VariableSave { Name = "myButton.State", Value = "Active" };
-        screenDefault.Variables.Add(stateVar);
-        _project.Screens.Add(screen);
-
-        var changes = _renameLogic.GetChangesForRenamedState(activeState, "Active", button, category: null);
-
-        changes.VariablesToUpdate.Count.ShouldBe(1);
-        changes.VariablesToUpdate[0].Variable.ShouldBe(stateVar);
-    }
-
-    [Fact]
-    public void ApplyStateRenameChanges_UpdatesVariableValue()
+    public void ApplyStateReferences_UpdatesVariableValue()
     {
         var button = new ComponentSave { Name = "Button" };
         button.States.Add(new StateSave { Name = "Default", ParentContainer = button });
@@ -426,10 +193,10 @@ public class RenameLogicTests : BaseTestClass
         var stateVar = new VariableSave { Name = "myButton.VisibilityState", Value = "Shown" };
         var renamedState = new StateSave { Name = "Visible", ParentContainer = button };
 
-        var changes = new StateRenameChanges();
+        var changes = new StateReferences();
         changes.VariablesToUpdate.Add((screen, stateVar));
 
-        _renameLogic.ApplyStateRenameChanges(changes, renamedState);
+        _renameLogic.ApplyStateReferences(changes, renamedState);
 
         stateVar.Value.ShouldBe("Visible");
     }
@@ -437,87 +204,6 @@ public class RenameLogicTests : BaseTestClass
     #endregion
 
     #region Category rename
-
-    [Fact]
-    public void GetChangesForRenamedCategory_InstanceWithMatchingType_IsDetected()
-    {
-        // Button has a "Visibility" category.
-        // A screen has an instance of Button with a variable of Type "Visibility" (the category name).
-        // GetChangesForRenamedCategory should detect this variable.
-        var button = new ComponentSave { Name = "Button" };
-        button.States.Add(new StateSave { Name = "Default", ParentContainer = button });
-        var visibilityCategory = new StateSaveCategory { Name = "Visibility" };
-        button.Categories.Add(visibilityCategory);
-        _project.Components.Add(button);
-
-        var screen = new ScreenSave { Name = "TestScreen" };
-        var screenDefault = new StateSave { Name = "Default", ParentContainer = screen };
-        screen.States.Add(screenDefault);
-        var instance = new InstanceSave { Name = "myButton", BaseType = "Button", ParentContainer = screen };
-        screen.Instances.Add(instance);
-        var stateVar = new VariableSave { Name = "myButton.VisibilityState", Type = "Visibility" };
-        screenDefault.Variables.Add(stateVar);
-        _project.Screens.Add(screen);
-
-        var changes = _renameLogic.GetChangesForRenamedCategory(button, visibilityCategory, "Visibility");
-
-        changes.VariableChanges.Count.ShouldBe(1);
-        changes.VariableChanges[0].Variable.ShouldBe(stateVar);
-    }
-
-    [Fact]
-    public void GetChangesForRenamedCategory_NonMatchingType_IsNotDetected()
-    {
-        var button = new ComponentSave { Name = "Button" };
-        button.States.Add(new StateSave { Name = "Default", ParentContainer = button });
-        var visibilityCategory = new StateSaveCategory { Name = "Visibility" };
-        button.Categories.Add(visibilityCategory);
-        _project.Components.Add(button);
-
-        var screen = new ScreenSave { Name = "TestScreen" };
-        var screenDefault = new StateSave { Name = "Default", ParentContainer = screen };
-        screen.States.Add(screenDefault);
-        var instance = new InstanceSave { Name = "myButton", BaseType = "Button", ParentContainer = screen };
-        screen.Instances.Add(instance);
-        // Type is "Appearance" not "Visibility" — should not match
-        screenDefault.Variables.Add(new VariableSave { Name = "myButton.AppearanceState", Type = "Appearance" });
-        _project.Screens.Add(screen);
-
-        var changes = _renameLogic.GetChangesForRenamedCategory(button, visibilityCategory, "Visibility");
-
-        changes.VariableChanges.ShouldBeEmpty();
-    }
-
-    [Fact]
-    public void GetChangesForRenamedCategory_InheritedElement_IsDetected()
-    {
-        // Button has a "Visibility" category. ButtonChild inherits from Button.
-        // A screen has an instance of ButtonChild with a variable of Type "Visibility".
-        // Since ButtonChild is in Button's inheritance chain, the variable should be detected.
-        var button = new ComponentSave { Name = "Button" };
-        button.States.Add(new StateSave { Name = "Default", ParentContainer = button });
-        var visibilityCategory = new StateSaveCategory { Name = "Visibility" };
-        button.Categories.Add(visibilityCategory);
-        _project.Components.Add(button);
-
-        var buttonChild = new ComponentSave { Name = "ButtonChild", BaseType = "Button" };
-        buttonChild.States.Add(new StateSave { Name = "Default", ParentContainer = buttonChild });
-        _project.Components.Add(buttonChild);
-
-        var screen = new ScreenSave { Name = "TestScreen" };
-        var screenDefault = new StateSave { Name = "Default", ParentContainer = screen };
-        screen.States.Add(screenDefault);
-        var instance = new InstanceSave { Name = "myButton", BaseType = "ButtonChild", ParentContainer = screen };
-        screen.Instances.Add(instance);
-        var stateVar = new VariableSave { Name = "myButton.VisibilityState", Type = "Visibility" };
-        screenDefault.Variables.Add(stateVar);
-        _project.Screens.Add(screen);
-
-        var changes = _renameLogic.GetChangesForRenamedCategory(button, visibilityCategory, "Visibility");
-
-        changes.VariableChanges.Count.ShouldBe(1);
-        changes.VariableChanges[0].Variable.ShouldBe(stateVar);
-    }
 
     [Fact]
     public void AskToRenameStateCategory_UpdatesCategoryName()
@@ -573,159 +259,7 @@ public class RenameLogicTests : BaseTestClass
     #region Instance rename
 
     [Fact]
-    public void GetChangesForRenamedInstance_VariableReferenceRightSide_SameElement_IsDetected()
-    {
-        // ComponentA has instances "ChildA" and "ChildB".
-        // ChildB.VariableReferences has entry "Width = ChildA.Width" — ChildA is on the right side.
-        // Renaming ChildA should detect this entry as a right-side change.
-        var componentA = new ComponentSave { Name = "ComponentA" };
-        var defaultState = new StateSave { Name = "Default", ParentContainer = componentA };
-        componentA.States.Add(defaultState);
-        var childA = new InstanceSave { Name = "ChildA", BaseType = "Sprite", ParentContainer = componentA };
-        var childB = new InstanceSave { Name = "ChildB", BaseType = "Sprite", ParentContainer = componentA };
-        componentA.Instances.Add(childA);
-        componentA.Instances.Add(childB);
-        var varRefList = new VariableListSave<string> { Type = "string", Name = "ChildB.VariableReferences" };
-        varRefList.Value.Add("Width = ChildA.Width");
-        defaultState.VariableLists.Add(varRefList);
-        _project.Components.Add(componentA);
-
-        var changes = _renameLogic.GetChangesForRenamedInstance(componentA, childA, "ChildA");
-
-        changes.VariableReferenceChanges.Count.ShouldBe(1);
-        changes.VariableReferenceChanges[0].Container.ShouldBe(componentA);
-        changes.VariableReferenceChanges[0].LineIndex.ShouldBe(0);
-        changes.VariableReferenceChanges[0].ChangedSide.ShouldBe(SideOfEquals.Right);
-    }
-
-    [Fact]
-    public void GetChangesForRenamedInstance_VariableReferenceRightSide_InInheritingElement_IsDetected()
-    {
-        // ComponentB has instance "ChildA".
-        // DerivedComponent inherits from ComponentB and has a VariableReferences entry
-        // "SomeVar = ChildA.Width". Renaming ChildA in ComponentB should detect the entry
-        // in DerivedComponent since it inherits the instance.
-        var componentB = new ComponentSave { Name = "ComponentB" };
-        componentB.States.Add(new StateSave { Name = "Default", ParentContainer = componentB });
-        var childA = new InstanceSave { Name = "ChildA", BaseType = "Sprite", ParentContainer = componentB };
-        componentB.Instances.Add(childA);
-        _project.Components.Add(componentB);
-
-        var derivedComponent = new ComponentSave { Name = "DerivedComponent", BaseType = "ComponentB" };
-        var derivedDefault = new StateSave { Name = "Default", ParentContainer = derivedComponent };
-        derivedComponent.States.Add(derivedDefault);
-        var varRefList = new VariableListSave<string> { Type = "string", Name = "VariableReferences" };
-        varRefList.Value.Add("SomeVar = ChildA.Width");
-        derivedDefault.VariableLists.Add(varRefList);
-        _project.Components.Add(derivedComponent);
-
-        var changes = _renameLogic.GetChangesForRenamedInstance(componentB, childA, "ChildA");
-
-        changes.VariableReferenceChanges.Count.ShouldBe(1);
-        changes.VariableReferenceChanges[0].Container.ShouldBe(derivedComponent);
-        changes.VariableReferenceChanges[0].LineIndex.ShouldBe(0);
-        changes.VariableReferenceChanges[0].ChangedSide.ShouldBe(SideOfEquals.Right);
-    }
-
-    [Fact]
-    public void GetChangesForRenamedInstance_ParentVariableInOtherElement_IsDetected()
-    {
-        // ContainerComponent has a child instance "BeforeRename".
-        // TestScreen has an instance of ContainerComponent ("componentInstance") and another
-        // container ("OtherContainer") whose Parent is "componentInstance.BeforeRename".
-        // Renaming "BeforeRename" in ContainerComponent should detect the Parent variable in
-        // TestScreen even when the component does not have a DefaultChildContainer set.
-        var containerComponent = new ComponentSave { Name = "ContainerComponent" };
-        containerComponent.States.Add(new StateSave { Name = "Default", ParentContainer = containerComponent });
-        var beforeRenameInstance = new InstanceSave { Name = "BeforeRename", BaseType = "Container", ParentContainer = containerComponent };
-        containerComponent.Instances.Add(beforeRenameInstance);
-        _project.Components.Add(containerComponent);
-
-        var screen = new ScreenSave { Name = "TestScreen" };
-        var screenDefault = new StateSave { Name = "Default", ParentContainer = screen };
-        screen.States.Add(screenDefault);
-        var componentInstance = new InstanceSave { Name = "componentInstance", BaseType = "ContainerComponent", ParentContainer = screen };
-        screen.Instances.Add(componentInstance);
-        var otherContainer = new InstanceSave { Name = "OtherContainer", BaseType = "Container", ParentContainer = screen };
-        screen.Instances.Add(otherContainer);
-        var parentVar = new VariableSave { Name = "OtherContainer.Parent", Value = "componentInstance.BeforeRename" };
-        screenDefault.Variables.Add(parentVar);
-        _project.Screens.Add(screen);
-
-        var changes = _renameLogic.GetChangesForRenamedInstance(containerComponent, beforeRenameInstance, "BeforeRename");
-
-        changes.ParentVariablesInOtherElements.Count.ShouldBe(1);
-        changes.ParentVariablesInOtherElements[0].Container.ShouldBe(screen);
-        changes.ParentVariablesInOtherElements[0].Variable.ShouldBe(parentVar);
-    }
-
-    [Fact]
-    public void GetChangesForRenamedInstance_SameInstanceNameInDifferentComponent_OnlyRenamedInstanceIsDetected()
-    {
-        // ComponentA has instance "Sprite" with a VariableReferences entry "Width = Sprite.Width".
-        // ComponentB also has instance "Sprite" with the same VariableReferences pattern.
-        // Renaming "Sprite" in ComponentA must only detect ComponentA's entry, not ComponentB's,
-        // because instance names are scoped to their containing element.
-        var componentA = new ComponentSave { Name = "ComponentA" };
-        var defaultStateA = new StateSave { Name = "Default", ParentContainer = componentA };
-        componentA.States.Add(defaultStateA);
-        var spriteA = new InstanceSave { Name = "Sprite", BaseType = "NineSlice", ParentContainer = componentA };
-        componentA.Instances.Add(spriteA);
-        var varRefListA = new VariableListSave<string> { Type = "string", Name = "VariableReferences" };
-        varRefListA.Value.Add("Width = Sprite.Width");
-        defaultStateA.VariableLists.Add(varRefListA);
-        _project.Components.Add(componentA);
-
-        var componentB = new ComponentSave { Name = "ComponentB" };
-        var defaultStateB = new StateSave { Name = "Default", ParentContainer = componentB };
-        componentB.States.Add(defaultStateB);
-        var spriteB = new InstanceSave { Name = "Sprite", BaseType = "NineSlice", ParentContainer = componentB };
-        componentB.Instances.Add(spriteB);
-        var varRefListB = new VariableListSave<string> { Type = "string", Name = "VariableReferences" };
-        varRefListB.Value.Add("Width = Sprite.Width");
-        defaultStateB.VariableLists.Add(varRefListB);
-        _project.Components.Add(componentB);
-
-        var changes = _renameLogic.GetChangesForRenamedInstance(componentA, spriteA, "Sprite");
-
-        changes.VariableReferenceChanges.Count.ShouldBe(1);
-        changes.VariableReferenceChanges[0].VariableReferenceList.ShouldBe(varRefListA);
-    }
-
-    [Fact]
-    public void GetChangesForRenamedInstance_VariableReferenceRightSide_CrossComponentQualifiedReference_IsDetected()
-    {
-        // ComponentA has instance "Sprite". ComponentB also has instance "Sprite", and its
-        // Sprite.VariableReferences contains "Width = Components/ComponentA/Sprite.Width" —
-        // a cross-component qualified reference to ComponentA's Sprite instance.
-        // Renaming "Sprite" in ComponentA should detect this reference in ComponentB so it
-        // can be updated to "Width = Components/ComponentA/SpriteRename.Width".
-        var componentA = new ComponentSave { Name = "ComponentA" };
-        componentA.States.Add(new StateSave { Name = "Default", ParentContainer = componentA });
-        var spriteA = new InstanceSave { Name = "Sprite", BaseType = "Sprite", ParentContainer = componentA };
-        componentA.Instances.Add(spriteA);
-        _project.Components.Add(componentA);
-
-        var componentB = new ComponentSave { Name = "ComponentB" };
-        var defaultStateB = new StateSave { Name = "Default", ParentContainer = componentB };
-        componentB.States.Add(defaultStateB);
-        var spriteB = new InstanceSave { Name = "Sprite", BaseType = "Sprite", ParentContainer = componentB };
-        componentB.Instances.Add(spriteB);
-        var varRefList = new VariableListSave<string> { Type = "string", Name = "Sprite.VariableReferences" };
-        varRefList.Value.Add("Width = Components/ComponentA.Sprite.Width");
-        defaultStateB.VariableLists.Add(varRefList);
-        _project.Components.Add(componentB);
-
-        var changes = _renameLogic.GetChangesForRenamedInstance(componentA, spriteA, "Sprite");
-
-        changes.VariableReferenceChanges.Count.ShouldBe(1);
-        changes.VariableReferenceChanges[0].Container.ShouldBe(componentB);
-        changes.VariableReferenceChanges[0].LineIndex.ShouldBe(0);
-        changes.VariableReferenceChanges[0].ChangedSide.ShouldBe(SideOfEquals.Right);
-    }
-
-    [Fact]
-    public void ApplyInstanceRenameChanges_VariableReferenceRightSide_IsUpdated()
+    public void ApplyInstanceReferences_VariableReferenceRightSide_IsUpdated()
     {
         // "Width = ChildA.Width" should become "Width = NewName.Width".
         var componentA = new ComponentSave { Name = "ComponentA" };
@@ -737,7 +271,7 @@ public class RenameLogicTests : BaseTestClass
         varRefList.Value.Add("Width = ChildA.Width");
         defaultState.VariableLists.Add(varRefList);
 
-        var changes = new InstanceRenameChanges();
+        var changes = new InstanceReferences();
         changes.VariableReferenceChanges.Add(new VariableReferenceChange
         {
             Container = componentA,
@@ -746,15 +280,15 @@ public class RenameLogicTests : BaseTestClass
             ChangedSide = SideOfEquals.Right
         });
 
-        _renameLogic.ApplyInstanceRenameChanges(changes, "NewName", "ChildA", new HashSet<ElementSave>());
+        _renameLogic.ApplyInstanceReferences(changes, "NewName", "ChildA", new HashSet<ElementSave>());
 
         varRefList.Value[0].ShouldBe("Width = NewName.Width");
     }
 
     [Fact]
-    public void ApplyInstanceRenameChanges_ParentVariableInOtherElement_IsUpdated()
+    public void ApplyInstanceReferences_ParentVariableInOtherElement_IsUpdated()
     {
-        // An InstanceRenameChanges with a ParentVariablesInOtherElements entry whose value is
+        // An InstanceReferences with a ParentVariablesInOtherElements entry whose value is
         // "componentInstance.BeforeRename" should have that value updated to
         // "componentInstance.AfterRename" after applying the changes.
         var screen = new ScreenSave { Name = "TestScreen" };
@@ -764,16 +298,16 @@ public class RenameLogicTests : BaseTestClass
         var parentVar = new VariableSave { Name = "OtherContainer.Parent", Value = "componentInstance.BeforeRename" };
         screen.DefaultState.Variables.Add(parentVar);
 
-        var changes = new InstanceRenameChanges();
+        var changes = new InstanceReferences();
         changes.ParentVariablesInOtherElements.Add((screen, parentVar));
 
-        _renameLogic.ApplyInstanceRenameChanges(changes, "AfterRename", "BeforeRename", new HashSet<ElementSave>());
+        _renameLogic.ApplyInstanceReferences(changes, "AfterRename", "BeforeRename", new HashSet<ElementSave>());
 
         parentVar.Value.ShouldBe("componentInstance.AfterRename");
     }
 
     [Fact]
-    public void ApplyInstanceRenameChanges_AddsContainerToElementsToSave()
+    public void ApplyInstanceReferences_AddsContainerToElementsToSave()
     {
         var componentA = new ComponentSave { Name = "ComponentA" };
         var defaultState = new StateSave { Name = "Default", ParentContainer = componentA };
@@ -784,7 +318,7 @@ public class RenameLogicTests : BaseTestClass
         varRefList.Value.Add("Width = ChildA.Width");
         defaultState.VariableLists.Add(varRefList);
 
-        var changes = new InstanceRenameChanges();
+        var changes = new InstanceReferences();
         changes.VariableReferenceChanges.Add(new VariableReferenceChange
         {
             Container = componentA,
@@ -794,7 +328,7 @@ public class RenameLogicTests : BaseTestClass
         });
 
         var elementsToSave = new HashSet<ElementSave>();
-        _renameLogic.ApplyInstanceRenameChanges(changes, "NewName", "ChildA", elementsToSave);
+        _renameLogic.ApplyInstanceReferences(changes, "NewName", "ChildA", elementsToSave);
 
         elementsToSave.ShouldContain(componentA);
     }
@@ -802,154 +336,27 @@ public class RenameLogicTests : BaseTestClass
     #endregion
 
     [Fact]
-    public void GetChangesForRenamedVariable_VariableReferenceLeftSideOnInstance_IsDetected()
-    {
-        // ComponentA has a variable MyVar.
-        // ComponentB has instance myA of type ComponentA with a VariableReferences entry
-        // where MyVar appears on the left side: "MyVar = someOtherVar".
-        // Renaming MyVar in ComponentA should detect this as a left-side reference change.
-        var componentA = new ComponentSave { Name = "ComponentA" };
-        componentA.States.Add(new StateSave { Name = "Default", ParentContainer = componentA });
-        _project.Components.Add(componentA);
-
-        var componentB = new ComponentSave { Name = "ComponentB" };
-        var defaultStateB = new StateSave { Name = "Default", ParentContainer = componentB };
-        componentB.States.Add(defaultStateB);
-        var myA = new InstanceSave { Name = "myA", BaseType = "ComponentA", ParentContainer = componentB };
-        componentB.Instances.Add(myA);
-
-        var varRefList = new VariableListSave<string> { Type = "string", Name = "myA.VariableReferences" };
-        varRefList.Value.Add("MyVar = someOtherVar");
-        defaultStateB.VariableLists.Add(varRefList);
-        _project.Components.Add(componentB);
-
-        var result = _renameLogic.GetChangesForRenamedVariable(
-            componentA,
-            oldFullName: "MyVar",
-            oldStrippedOrExposedName: "MyVar");
-
-        result.VariableReferenceChanges.Count.ShouldBe(1);
-        result.VariableReferenceChanges[0].ChangedSide.ShouldBe(SideOfEquals.Left);
-    }
-
-    [Fact]
-    public void GetChangesForRenamedVariable_VariableReferenceLeftSideOnInstance_OnlyDetectedForMatchingComponent()
-    {
-        // ComponentA and ComponentB both have a variable named BeforeRename.
-        // ComponentC has one instance of each, both with a VariableReferences entry "BeforeRename = SomeVariable".
-        // Renaming BeforeRename on ComponentA should detect only instanceA's reference, not instanceB's.
-        var componentA = new ComponentSave { Name = "ComponentA" };
-        componentA.States.Add(new StateSave { Name = "Default", ParentContainer = componentA });
-        _project.Components.Add(componentA);
-
-        var componentB = new ComponentSave { Name = "ComponentB" };
-        componentB.States.Add(new StateSave { Name = "Default", ParentContainer = componentB });
-        _project.Components.Add(componentB);
-
-        var componentC = new ComponentSave { Name = "ComponentC" };
-        var defaultStateC = new StateSave { Name = "Default", ParentContainer = componentC };
-        componentC.States.Add(defaultStateC);
-
-        var instanceA = new InstanceSave { Name = "instanceA", BaseType = "ComponentA", ParentContainer = componentC };
-        componentC.Instances.Add(instanceA);
-        var instanceB = new InstanceSave { Name = "instanceB", BaseType = "ComponentB", ParentContainer = componentC };
-        componentC.Instances.Add(instanceB);
-
-        var varRefListA = new VariableListSave<string> { Type = "string", Name = "instanceA.VariableReferences" };
-        varRefListA.Value.Add("BeforeRename = SomeVariable");
-        defaultStateC.VariableLists.Add(varRefListA);
-
-        var varRefListB = new VariableListSave<string> { Type = "string", Name = "instanceB.VariableReferences" };
-        varRefListB.Value.Add("BeforeRename = SomeVariable");
-        defaultStateC.VariableLists.Add(varRefListB);
-
-        _project.Components.Add(componentC);
-
-        var result = _renameLogic.GetChangesForRenamedVariable(
-            componentA,
-            oldFullName: "BeforeRename",
-            oldStrippedOrExposedName: "BeforeRename");
-
-        result.VariableReferenceChanges.Count.ShouldBe(1);
-        result.VariableReferenceChanges[0].VariableReferenceList.ShouldBe(varRefListA);
-    }
-
-    [Fact]
-    public void GetChangesForRenamedVariable_VariableReferenceRightSideOnQualifiedName_OnlyDetectedForMatchingComponent()
-    {
-        // ComponentA and ComponentB both have a variable named BeforeRename.
-        // ComponentC has a VariableReferences list with two entries using qualified names:
-        // one referencing Components/ComponentA.BeforeRename and one referencing Components/ComponentB.BeforeRename.
-        // Renaming BeforeRename on ComponentA should detect only the ComponentA entry (index 0).
-        var componentA = new ComponentSave { Name = "ComponentA" };
-        componentA.States.Add(new StateSave { Name = "Default", ParentContainer = componentA });
-        _project.Components.Add(componentA);
-
-        var componentB = new ComponentSave { Name = "ComponentB" };
-        componentB.States.Add(new StateSave { Name = "Default", ParentContainer = componentB });
-        _project.Components.Add(componentB);
-
-        var componentC = new ComponentSave { Name = "ComponentC" };
-        var defaultStateC = new StateSave { Name = "Default", ParentContainer = componentC };
-        componentC.States.Add(defaultStateC);
-
-        var varRefList = new VariableListSave<string> { Type = "string", Name = "VariableReferences" };
-        varRefList.Value.Add("SomeVar = Components/ComponentA.BeforeRename");
-        varRefList.Value.Add("SomeOtherVar = Components/ComponentB.BeforeRename");
-        defaultStateC.VariableLists.Add(varRefList);
-
-        _project.Components.Add(componentC);
-
-        var result = _renameLogic.GetChangesForRenamedVariable(
-            componentA,
-            oldFullName: "BeforeRename",
-            oldStrippedOrExposedName: "BeforeRename");
-
-        result.VariableReferenceChanges.Count.ShouldBe(1);
-        result.VariableReferenceChanges[0].VariableReferenceList.ShouldBe(varRefList);
-        result.VariableReferenceChanges[0].LineIndex.ShouldBe(0);
-        result.VariableReferenceChanges[0].ChangedSide.ShouldBe(SideOfEquals.Right);
-    }
-
-    [Fact]
-    public void GetChangesForRenamedVariable_VariableReferenceRightSideOnSelf_IsDetected()
-    {
-        // ComponentA has a VariableReferences entry where MyVar appears on the right side:
-        // "SomeOtherVar = MyVar". Renaming MyVar in ComponentA should detect this.
-        var componentA = new ComponentSave { Name = "ComponentA" };
-        var defaultStateA = new StateSave { Name = "Default", ParentContainer = componentA };
-        componentA.States.Add(defaultStateA);
-
-        var varRefList = new VariableListSave<string> { Type = "string", Name = "VariableReferences" };
-        varRefList.Value.Add("SomeOtherVar = MyVar");
-        defaultStateA.VariableLists.Add(varRefList);
-        _project.Components.Add(componentA);
-
-        var result = _renameLogic.GetChangesForRenamedVariable(
-            componentA,
-            oldFullName: "MyVar",
-            oldStrippedOrExposedName: "MyVar");
-
-        result.VariableReferenceChanges.Count.ShouldBe(1);
-        result.VariableReferenceChanges[0].ChangedSide.ShouldBe(SideOfEquals.Right);
-    }
-
-    [Fact]
     public void ApplyVariableRenameChanges_InstanceVariableRename_PreservesValue()
     {
-        var button = new ComponentSave { Name = "Button" };
+        ComponentSave button = new ComponentSave { Name = "Button" };
         button.States.Add(new StateSave { Name = "Default", ParentContainer = button });
         _project.Components.Add(button);
 
-        var screen = new ScreenSave { Name = "TestScreen" };
+        ScreenSave screen = new ScreenSave { Name = "TestScreen" };
         screen.States.Add(new StateSave { Name = "Default", ParentContainer = screen });
-        var instance = new InstanceSave { Name = "myButton", BaseType = "Button", ParentContainer = screen };
+        InstanceSave instance = new InstanceSave { Name = "myButton", BaseType = "Button", ParentContainer = screen };
         screen.Instances.Add(instance);
-        var instanceVar = new VariableSave { Name = "myButton.Color", Value = "Red" };
+        VariableSave instanceVar = new VariableSave { Name = "myButton.Color", Value = "Red" };
         screen.DefaultState.Variables.Add(instanceVar);
         _project.Screens.Add(screen);
 
-        var changes = _renameLogic.GetChangesForRenamedVariable(button, "Color", "Color");
+        VariableChangeResponse changes = new VariableChangeResponse();
+        changes.VariableChanges.Add(new VariableChange
+        {
+            Container = screen,
+            State = screen.DefaultState,
+            Variable = instanceVar
+        });
         _renameLogic.ApplyVariableRenameChanges(changes, "Color", "BackgroundColor", new HashSet<ElementSave>());
 
         instanceVar.Name.ShouldBe("myButton.BackgroundColor");
@@ -963,13 +370,13 @@ public class RenameLogicTests : BaseTestClass
         // ButtonChild inherits from Button and re-exposes the same variable with the same alias.
         // When Button renames the alias, ButtonChild's alias should update too,
         // but the underlying variable Name and Value should be unchanged.
-        var button = new ComponentSave { Name = "Button" };
+        ComponentSave button = new ComponentSave { Name = "Button" };
         button.States.Add(new StateSave { Name = "Default", ParentContainer = button });
         _project.Components.Add(button);
 
-        var buttonChild = new ComponentSave { Name = "ButtonChild", BaseType = "Button" };
+        ComponentSave buttonChild = new ComponentSave { Name = "ButtonChild", BaseType = "Button" };
         buttonChild.States.Add(new StateSave { Name = "Default", ParentContainer = buttonChild });
-        var childVar = new VariableSave
+        VariableSave childVar = new VariableSave
         {
             Name = "InnerSprite.Color",
             ExposedAsName = "ButtonColor",
@@ -978,7 +385,13 @@ public class RenameLogicTests : BaseTestClass
         buttonChild.DefaultState.Variables.Add(childVar);
         _project.Components.Add(buttonChild);
 
-        var changes = _renameLogic.GetChangesForRenamedVariable(button, "InnerSprite.Color", "ButtonColor");
+        VariableChangeResponse changes = new VariableChangeResponse();
+        changes.VariableChanges.Add(new VariableChange
+        {
+            Container = buttonChild,
+            State = buttonChild.DefaultState,
+            Variable = childVar
+        });
         _renameLogic.ApplyVariableRenameChanges(changes, "ButtonColor", "BgColor", new HashSet<ElementSave>());
 
         childVar.ExposedAsName.ShouldBe("BgColor");
@@ -986,22 +399,153 @@ public class RenameLogicTests : BaseTestClass
         childVar.Value.ShouldBe("Blue");
     }
 
+    #region GetDeleteImpactDetails
+
+    [Fact]
+    public void BehaviorReferences_GetDeleteImpactDetails_ListsReferencingElements()
+    {
+        ComponentSave button = new ComponentSave { Name = "Button" };
+        ElementBehaviorReference reference = new ElementBehaviorReference { BehaviorName = "Focusable" };
+
+        BehaviorReferences changes = new BehaviorReferences();
+        changes.ElementsWithBehaviorReference.Add((button, reference));
+
+        string details = changes.GetDeleteImpactDetails();
+
+        details.ShouldNotBeNullOrEmpty();
+        details.ShouldContain("Button");
+    }
+
+    [Fact]
+    public void BehaviorReferences_GetDeleteImpactDetails_NoReferences_ReturnsEmpty()
+    {
+        BehaviorReferences changes = new BehaviorReferences();
+
+        string details = changes.GetDeleteImpactDetails();
+
+        details.ShouldBeNullOrEmpty();
+    }
+
+    [Fact]
+    public void CategoryReferences_GetDeleteImpactDetails_ListsAffectedVariables()
+    {
+        ComponentSave button = new ComponentSave { Name = "Button" };
+        button.States.Add(new StateSave { Name = "Default", ParentContainer = button });
+        VariableSave stateVar = new VariableSave { Name = "VisibilityState", Type = "VisibilityState" };
+
+        CategoryReferences changes = new CategoryReferences();
+        changes.VariableChanges.Add(new VariableChange
+        {
+            Container = button,
+            Variable = stateVar
+        });
+
+        string details = changes.GetDeleteImpactDetails();
+
+        details.ShouldNotBeNullOrEmpty();
+        details.ShouldContain("VisibilityState");
+        details.ShouldContain("Button");
+    }
+
+    [Fact]
+    public void CategoryReferences_GetDeleteImpactDetails_NoReferences_ReturnsEmpty()
+    {
+        CategoryReferences changes = new CategoryReferences();
+
+        string details = changes.GetDeleteImpactDetails();
+
+        details.ShouldBeNullOrEmpty();
+    }
+
+    [Fact]
+    public void InstanceReferences_GetDeleteImpactDetails_DefaultChildContainerChange_IncludesWarning()
+    {
+        InstanceReferences changes = new InstanceReferences();
+        changes.DefaultChildContainerWillChange = true;
+
+        string details = changes.GetDeleteImpactDetails();
+
+        details.ShouldNotBeNullOrEmpty();
+        details.ShouldContain("DefaultChildContainer");
+    }
+
+    [Fact]
+    public void InstanceReferences_GetDeleteImpactDetails_NoOrphans_ReturnsEmpty()
+    {
+        InstanceReferences changes = new InstanceReferences();
+
+        string details = changes.GetDeleteImpactDetails();
+
+        details.ShouldBeNullOrEmpty();
+    }
+
+    [Fact]
+    public void InstanceReferences_GetDeleteImpactDetails_ParentVariablesInOtherElements_ListsContainerNames()
+    {
+        ScreenSave screen = new ScreenSave { Name = "MainScreen" };
+        VariableSave parentVar = new VariableSave { Name = "child.Parent", Value = "container.deletedInstance" };
+
+        InstanceReferences changes = new InstanceReferences();
+        changes.ParentVariablesInOtherElements.Add((screen, parentVar));
+
+        string details = changes.GetDeleteImpactDetails();
+
+        details.ShouldNotBeNullOrEmpty();
+        details.ShouldContain("MainScreen");
+    }
+
+    [Fact]
+    public void StateReferences_GetDeleteImpactDetails_ListsAffectedVariables()
+    {
+        ComponentSave button = new ComponentSave { Name = "Button" };
+        button.States.Add(new StateSave { Name = "Default", ParentContainer = button });
+        VariableSave stateVar = new VariableSave { Name = "myButton.VisibilityState", Value = "Shown" };
+
+        StateReferences changes = new StateReferences();
+        changes.VariablesToUpdate.Add((button, stateVar));
+
+        string details = changes.GetDeleteImpactDetails();
+
+        details.ShouldNotBeNullOrEmpty();
+        details.ShouldContain("myButton.VisibilityState");
+        details.ShouldContain("Button");
+    }
+
+    [Fact]
+    public void StateReferences_GetDeleteImpactDetails_NoReferences_ReturnsEmpty()
+    {
+        StateReferences changes = new StateReferences();
+
+        string details = changes.GetDeleteImpactDetails();
+
+        details.ShouldBeNullOrEmpty();
+    }
+
+    #endregion
+
     [Fact]
     public void ApplyVariableRenameChanges_InstanceVariableRename_AddsElementToNeedingSave()
     {
-        var button = new ComponentSave { Name = "Button" };
+        ComponentSave button = new ComponentSave { Name = "Button" };
         button.States.Add(new StateSave { Name = "Default", ParentContainer = button });
         _project.Components.Add(button);
 
-        var screen = new ScreenSave { Name = "TestScreen" };
+        ScreenSave screen = new ScreenSave { Name = "TestScreen" };
         screen.States.Add(new StateSave { Name = "Default", ParentContainer = screen });
-        var instance = new InstanceSave { Name = "myButton", BaseType = "Button", ParentContainer = screen };
+        InstanceSave instance = new InstanceSave { Name = "myButton", BaseType = "Button", ParentContainer = screen };
         screen.Instances.Add(instance);
-        screen.DefaultState.Variables.Add(new VariableSave { Name = "myButton.Color", Value = "Red" });
+        VariableSave colorVar = new VariableSave { Name = "myButton.Color", Value = "Red" };
+        screen.DefaultState.Variables.Add(colorVar);
         _project.Screens.Add(screen);
 
-        var elementsNeedingSave = new HashSet<ElementSave>();
-        var changes = _renameLogic.GetChangesForRenamedVariable(button, "Color", "Color");
+        HashSet<ElementSave> elementsNeedingSave = new HashSet<ElementSave>();
+        VariableChangeResponse changes = new VariableChangeResponse();
+        changes.VariableChanges.Add(new VariableChange
+        {
+            Container = screen,
+            State = screen.DefaultState,
+            Variable = colorVar
+        });
         _renameLogic.ApplyVariableRenameChanges(changes, "Color", "BackgroundColor", elementsNeedingSave);
 
         elementsNeedingSave.ShouldContain(screen);

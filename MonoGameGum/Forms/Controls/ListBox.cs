@@ -12,7 +12,9 @@ using System.Linq;
 
 
 
+
 #if FRB
+using FlatRedBall.Managers;
 using FlatRedBall.Input;
 using GamepadButton = FlatRedBall.Input.Xbox360GamePad.Button;
 using Microsoft.Xna.Framework.Input;
@@ -110,7 +112,7 @@ public enum DragDropReorderMode
 
 #region RepositionDirections Enum
 
-public enum RepositionDirections
+internal enum RepositionDirections
 {
     None = 0,
     Up = 1,
@@ -317,16 +319,16 @@ public class ListBox : ItemsControl, IInputReceiver
             if (selectedItemsCollection.Count > 0)
             {
                 var firstSelectedItem = selectedItemsCollection[0];
-                return Items.IndexOf(firstSelectedItem);
+                return Items?.IndexOf(firstSelectedItem) ?? -1;
             }
 
             return -1;
         }
         set
         {
-            if (value > -1 && value < Items.Count)
+            if (value > -1 && value < (Items?.Count ?? 0))
             {
-                var itemToSelect = Items[value];
+                var itemToSelect = Items![value];
 
                 // Clear SelectedItems and select the single item
                 _suppressSelectionSync = true;
@@ -494,7 +496,11 @@ public class ListBox : ItemsControl, IInputReceiver
     /// contains information about the changed selected items.
     /// </summary>
     public event Action<object, SelectionChangedEventArgs> SelectionChanged;
-    public event Action<IInputReceiver> FocusUpdate;
+    /// <summary>
+    /// Raised every frame while this control has input focus. Can be used
+    /// to perform custom per-frame logic while the control is focused.
+    /// </summary>
+    public event Action<IInputReceiver>? FocusUpdate;
 
     /// <summary>
     /// Event raised when the user presses a button, whether at the top level or internally on
@@ -954,7 +960,7 @@ public class ListBox : ItemsControl, IInputReceiver
         for (int i = 0; i < ListBoxItemsInternal.Count; i++)
         {
             var listBoxItem = ListBoxItemsInternal[i];
-            var item = i < Items.Count ? Items[i] : listBoxItem;
+            var item = i < (Items?.Count ?? 0) ? Items![i] : listBoxItem;
 
             bool shouldBeSelected = selectedItemsCollection.Contains(item);
 
@@ -1006,7 +1012,7 @@ public class ListBox : ItemsControl, IInputReceiver
                 {
                     foreach (var item in e.NewItems)
                     {
-                        var index = Items.IndexOf(item);
+                        var index = Items?.IndexOf(item) ?? -1;
                         if (index >= 0 && index < ListBoxItemsInternal.Count)
                         {
                             var listBoxItem = ListBoxItemsInternal[index];
@@ -1025,7 +1031,7 @@ public class ListBox : ItemsControl, IInputReceiver
                 {
                     foreach (var item in e.OldItems)
                     {
-                        var index = Items.IndexOf(item);
+                        var index = Items?.IndexOf(item) ?? -1;
                         if (index >= 0 && index < ListBoxItemsInternal.Count)
                         {
                             var listBoxItem = ListBoxItemsInternal[index];
@@ -1047,7 +1053,7 @@ public class ListBox : ItemsControl, IInputReceiver
                     if (listBoxItem.IsSelected)
                     {
                         listBoxItem.IsSelected = false;
-                        var item = i < Items.Count ? Items[i] : listBoxItem;
+                        var item = i < (Items?.Count ?? 0) ? Items![i] : listBoxItem;
                         selectionChangedArgs.RemovedItems.Add(item);
                     }
                 }
@@ -1058,7 +1064,7 @@ public class ListBox : ItemsControl, IInputReceiver
                 {
                     foreach (var item in e.OldItems)
                     {
-                        var index = Items.IndexOf(item);
+                        var index = Items?.IndexOf(item) ?? -1;
                         if (index >= 0 && index < ListBoxItemsInternal.Count)
                         {
                             var listBoxItem = ListBoxItemsInternal[index];
@@ -1074,7 +1080,7 @@ public class ListBox : ItemsControl, IInputReceiver
                 {
                     foreach (var item in e.NewItems)
                     {
-                        var index = Items.IndexOf(item);
+                        var index = Items?.IndexOf(item) ?? -1;
                         if (index >= 0 && index < ListBoxItemsInternal.Count)
                         {
                             var listBoxItem = ListBoxItemsInternal[index];
@@ -1108,11 +1114,20 @@ public class ListBox : ItemsControl, IInputReceiver
     #region Collection Changed
 
     bool _suppressCollectionChangedToBase = false;
+    bool _isAddingFromItemsCollection = false;
     protected override void HandleItemsCollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
     {
         if(_suppressCollectionChangedToBase == false)
         {
-            base.HandleItemsCollectionChanged(sender, e);
+            _isAddingFromItemsCollection = e.Action == NotifyCollectionChangedAction.Add;
+            try
+            {
+                base.HandleItemsCollectionChanged(sender, e);
+            }
+            finally
+            {
+                _isAddingFromItemsCollection = false;
+            }
         }
 
         // Handle removal of selected items from the Items collection
@@ -1167,15 +1182,20 @@ public class ListBox : ItemsControl, IInputReceiver
         {
             ListBoxItemsInternal.Insert(newItemIndex, listBoxItem);
             listBoxItem.AssignListBoxEvents(
-                HandleItemSelected, 
-                HandleItemFocused, 
-                HandleListBoxItemPushed, 
+                HandleItemSelected,
+                HandleItemFocused,
+                HandleListBoxItemPushed,
                 HandleListBoxItemClicked,
                 HandleListBoxItemDragging);
             if(this.IsEnabled == false)
             {
                 // so this appears disabled:
                 newItem.UpdateState();
+            }
+
+            if (!_isAddingFromItemsCollection && !Items.Contains(listBoxItem))
+            {
+                Items.Insert(newItemIndex, listBoxItem);
             }
         }
     }
@@ -1376,6 +1396,15 @@ public class ListBox : ItemsControl, IInputReceiver
         var layerToAddListBoxTo = GetLayerToAddTo(listBoxParent);
 
 #if FRB
+        // just in case:
+        if(popup.Visual.Managers != null)
+        {
+            // don't do this, it can clear binding:
+            //popup.Visual.RemoveFromManagers();
+            GraphicalUiElement.RemoveRenderableFromManagers?.Invoke(popup.Visual, popup.Visual.Managers);
+            popup.Visual.ClearManagers();
+            GuiManager.RemoveWindow(popup.Visual);
+        }
         popup.Visual.AddToManagers(listBoxParent.EffectiveManagers,
             layerToAddListBoxTo);
 

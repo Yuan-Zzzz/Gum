@@ -1,7 +1,7 @@
 using Gum.DataTypes;
 using Gum.Managers;
 using Gum.Plugins;
-using Gum.Reflection;
+using Gum.ProjectServices;
 using Moq;
 using Shouldly;
 
@@ -13,21 +13,37 @@ public class ErrorCheckerTests : BaseTestClass
 
     public ErrorCheckerTests()
     {
-        var mockTypeManager = new Mock<ITypeManager>();
-        var mockPluginManager = new Mock<IPluginManager>();
-        _sut = new ErrorChecker(mockTypeManager.Object, mockPluginManager.Object);
+        ITypeResolver typeResolver = new DefaultTypeResolver();
+        IHeadlessErrorChecker headlessErrorChecker = new HeadlessErrorChecker(typeResolver);
+        Mock<IPluginManager> mockPluginManager = new Mock<IPluginManager>();
+        _sut = new ErrorChecker(headlessErrorChecker, mockPluginManager.Object);
+    }
+
+    [Fact]
+    public void GetErrorsFor_ShouldReportError_WhenComponentHasInvalidBaseType()
+    {
+        GumProjectSave project = new GumProjectSave();
+        ObjectFinder.Self.GumProjectSave = project;
+
+        ComponentSave component = new ComponentSave { Name = "DerivedComponent", BaseType = "NonExistentBase" };
+        project.Components.Add(component);
+
+        ErrorViewModel[] errors = _sut.GetErrorsFor(component, project);
+
+        errors.Length.ShouldBe(1);
+        errors[0].Message.ShouldContain("NonExistentBase");
     }
 
     [Fact]
     public void GetErrorsFor_ShouldReportError_WhenComponentInstanceHasInvalidBaseType()
     {
-        var project = new GumProjectSave();
+        GumProjectSave project = new GumProjectSave();
         ObjectFinder.Self.GumProjectSave = project;
 
-        var validComponent = new ComponentSave { Name = "ValidType" };
+        ComponentSave validComponent = new ComponentSave { Name = "ValidType" };
         project.Components.Add(validComponent);
 
-        var component = new ComponentSave { Name = "TestComponent" };
+        ComponentSave component = new ComponentSave { Name = "TestComponent" };
         component.Instances.Add(new InstanceSave
         {
             Name = "GoodInstance",
@@ -40,7 +56,7 @@ public class ErrorCheckerTests : BaseTestClass
         });
         project.Components.Add(component);
 
-        var errors = _sut.GetErrorsFor(component, project);
+        ErrorViewModel[] errors = _sut.GetErrorsFor(component, project);
 
         errors.Length.ShouldBe(1);
         errors[0].Message.ShouldContain("NonExistentType");

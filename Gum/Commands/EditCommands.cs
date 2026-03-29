@@ -11,6 +11,7 @@ using Gum.Responses;
 using Gum.ToolCommands;
 using Gum.ToolStates;
 using Gum.Undo;
+using Gum.Wireframe;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -25,6 +26,11 @@ using Gum.Plugins.InternalPlugins.VariableGrid;
 
 namespace Gum.Commands;
 
+/// <summary>
+/// Implementation of IEditCommands. See the IEditCommands interface summary
+/// for an explanation of the two delete patterns (AskTo* vs DeleteSelection)
+/// and when to use each one.
+/// </summary>
 public class EditCommands : IEditCommands
 {
     private readonly ISelectedState _selectedState;
@@ -41,6 +47,7 @@ public class EditCommands : IEditCommands
     private readonly IDeleteLogic _deleteLogic;
     private readonly IProjectState _projectState;
     private readonly StandardElementsManagerGumTool _standardElementsManagerGumTool;
+    private readonly IReferenceFinder _referenceFinder;
 
     public EditCommands(ISelectedState selectedState,
         INameVerifier nameVerifier,
@@ -55,7 +62,8 @@ public class EditCommands : IEditCommands
         IDeleteLogic deleteLogic,
         IProjectManager projectManager,
         IProjectState projectState,
-        StandardElementsManagerGumTool standardElementsManagerGumTool)
+        StandardElementsManagerGumTool standardElementsManagerGumTool,
+        IReferenceFinder referenceFinder)
     {
         _selectedState = selectedState;
         _nameVerifier = nameVerifier;
@@ -70,6 +78,7 @@ public class EditCommands : IEditCommands
         _projectManager = projectManager;
         _projectState = projectState;
         _standardElementsManagerGumTool = standardElementsManagerGumTool;
+        _referenceFinder = referenceFinder;
 
         _deleteLogic = deleteLogic;
     }
@@ -82,31 +91,27 @@ public class EditCommands : IEditCommands
         deleteResponse.ShouldDelete = true;
         deleteResponse.ShouldShowMessage = false;
 
-        var behaviorNeedingState = GetBehaviorsNeedingState(stateSave);
+        var behaviorsNeedingState = GetBehaviorsNeedingState(stateSave);
 
-        if (behaviorNeedingState.Any())
+        if (behaviorsNeedingState.Any())
         {
             deleteResponse.ShouldDelete = false;
             deleteResponse.ShouldShowMessage = true;
             string message =
                 $"The state {stateSave.Name} cannot be removed because it is needed by the following behavior(s):";
 
-            foreach (var behavior in behaviorNeedingState)
+            foreach (var behavior in behaviorsNeedingState)
             {
                 message += "\n" + behavior.Name;
             }
 
             deleteResponse.Message = message;
-
         }
 
         if (deleteResponse.ShouldDelete && stateSave.ParentContainer?.DefaultState == stateSave)
         {
-            string message =
-                "This state cannot be removed because it is the default state.";
-
             deleteResponse.ShouldDelete = false;
-            deleteResponse.Message = message;
+            deleteResponse.Message = "This state cannot be removed because it is the default state.";
             deleteResponse.ShouldShowMessage = false;
         }
 
@@ -114,7 +119,6 @@ public class EditCommands : IEditCommands
         {
             deleteResponse = _pluginManager.GetDeleteStateResponse(stateSave, stateContainer);
         }
-
 
         if (deleteResponse.ShouldDelete == false)
         {
@@ -125,10 +129,62 @@ public class EditCommands : IEditCommands
         }
         else
         {
-            if (_dialogService.ShowYesNoMessage($"Are you sure you want to delete the state {stateSave.Name}?", "Delete state?"))
+            var category = stateContainer.Categories.FirstOrDefault(c => c.States.Contains(stateSave));
+            StateReferences stateChanges = _referenceFinder.GetReferencesToState(stateSave, stateSave.Name, stateContainer, category);
+            string impactDetails = stateChanges.GetDeleteImpactDetails();
+
+            string confirmMessage = $"Are you sure you want to delete the state {stateSave.Name}?";
+            if (!string.IsNullOrEmpty(impactDetails))
             {
+                confirmMessage += "\n\n" + impactDetails;
+            }
+
+            if (_dialogService.ShowYesNoMessage(confirmMessage, "Delete state?"))
+            {
+                AskToResolveStateReferences(stateSave);
                 using var undoLock = _undoManager.RequestLock();
                 _deleteLogic.Remove(stateSave);
+            }
+        }
+    }
+
+    private void AskToResolveStateReferences(StateSave stateSave)
+    {
+        var elementSave = _selectedState.SelectedElement;
+        List<InstanceSave> foundInstances = new List<InstanceSave>();
+
+        if (elementSave != null)
+        {
+            ObjectFinder.Self.GetElementsReferencing(elementSave, null, foundInstances);
+        }
+
+        foreach (var instance in foundInstances)
+        {
+            ElementSave parent = instance.ParentContainer;
+            string variableToLookFor = instance.Name + ".State";
+
+            foreach (var stateInContainer in parent.AllStates)
+            {
+                var foundVariable = stateInContainer.Variables.FirstOrDefault(item => item.Name == variableToLookFor);
+
+                if (foundVariable != null && foundVariable.Value == stateSave.Name)
+                {
+                    string message = "The state " + stateSave.Name + " is used in the element " +
+                        elementSave + " in its state " + stateInContainer + ".\n  What would you like to do?";
+
+                    DialogChoices<string> choices = new()
+                    {
+                        ["do-nothing"] = "Do nothing - project may be in an invalid state",
+                        ["make-default"] = "Change variable to default"
+                    };
+
+                    string? result = _dialogService.ShowChoices(message, choices);
+
+                    if (result == "make-default")
+                    {
+                        foundVariable.Value = "Default";
+                    }
+                }
             }
         }
     }
@@ -291,10 +347,60 @@ public class EditCommands : IEditCommands
         }
     }
 
-    public void RemoveStateCategory(StateSaveCategory category, IStateContainer stateCategoryListContainer)
+    public void AskToDeleteStateCategory(StateSaveCategory category, IStateContainer stateCategoryListContainer)
     {
-        using var undoLock = _undoManager.RequestLock();
-        _deleteLogic.RemoveStateCategory(category, stateCategoryListContainer);
+        var deleteResponse = new DeleteResponse();
+        deleteResponse.ShouldDelete = true;
+        deleteResponse.ShouldShowMessage = false;
+
+        var behaviorsNeedingCategory = _deleteLogic.GetBehaviorsNeedingCategory(category, stateCategoryListContainer as ComponentSave);
+
+        if (behaviorsNeedingCategory.Any())
+        {
+            deleteResponse.ShouldDelete = false;
+            deleteResponse.ShouldShowMessage = true;
+
+            string message =
+                $"The category {category.Name} cannot be removed because it is needed by the following behavior(s):";
+
+            foreach (var behavior in behaviorsNeedingCategory)
+            {
+                message += "\n" + behavior.Name;
+            }
+
+            deleteResponse.Message = message;
+        }
+
+        if (deleteResponse.ShouldDelete)
+        {
+            deleteResponse = _pluginManager.GetDeleteStateCategoryResponse(category, stateCategoryListContainer);
+        }
+
+        if (deleteResponse.ShouldDelete == false)
+        {
+            if (deleteResponse.ShouldShowMessage)
+            {
+                _dialogService.ShowMessage(deleteResponse.Message, "Delete Category");
+            }
+        }
+        else
+        {
+            CategoryReferences categoryChanges = _referenceFinder.GetReferencesToStateCategory(
+                stateCategoryListContainer, category, category.Name);
+            string impactDetails = categoryChanges.GetDeleteImpactDetails();
+
+            string confirmMessage = $"Are you sure you want to delete the category {category.Name}?";
+            if (!string.IsNullOrEmpty(impactDetails))
+            {
+                confirmMessage += "\n\n" + impactDetails;
+            }
+
+            if (_dialogService.ShowYesNoMessage(confirmMessage, "Delete category?"))
+            {
+                using var undoLock = _undoManager.RequestLock();
+                _deleteLogic.RemoveStateCategory(category, stateCategoryListContainer);
+            }
+        }
     }
 
 
@@ -359,6 +465,61 @@ public class EditCommands : IEditCommands
         container.RequiredVariables.Variables.Remove(variable);
         _fileCommands.TryAutoSaveBehavior(container);
         _guiCommands.RefreshVariables();
+    }
+
+    public void AskToRenameBehavior(BehaviorSave behavior)
+    {
+        if (StandardFormsBehaviorNames.All.Contains(behavior.Name))
+        {
+            var confirmed = _dialogService.ShowYesNoMessage(
+                $"\"{behavior.Name}\" is a standard Gum Forms behavior.\n\n" +
+                "The Forms runtime identifies controls by their exact behavior name. " +
+                "Renaming it will break Forms functionality for all components that use it " +
+                "and may also break generated code.\n\n" +
+                "Rename anyway?",
+                "Rename Standard Forms Behavior");
+
+            if (!confirmed)
+                return;
+        }
+
+        GetUserStringOptions options = new()
+        {
+            InitialValue = behavior.Name,
+            Validator = x => _nameVerifier.IsBehaviorNameValid(x, behavior, out string? whyNotValid) ? null : whyNotValid
+        };
+
+        if (_dialogService.GetUserString("Enter new behavior name:", "Rename Behavior", options) is not { } newName)
+            return;
+
+        var oldName = behavior.Name;
+        var oldFile = _fileCommands.GetFullPathXmlFile(behavior);
+
+        // Update behavior references on all elements that reference the old name
+        var references = _referenceFinder.GetReferencesToBehavior(behavior, oldName);
+        foreach (var (_, reference) in references.ElementsWithBehaviorReference)
+            reference.BehaviorName = newName;
+
+        // Update the project-level BehaviorReference entry
+        var projectRef = _projectManager.GumProjectSave.BehaviorReferences
+            .FirstOrDefault(r => r.Name == oldName);
+        if (projectRef != null)
+            projectRef.Name = newName;
+
+        behavior.Name = newName;
+
+        // Delete the old file and save under the new name
+        if (oldFile.Exists())
+            System.IO.File.Delete(oldFile.FullPath);
+
+        _fileCommands.TryAutoSaveBehavior(behavior);
+        _fileCommands.TryAutoSaveProject();
+
+        // Save all elements whose behavior references changed
+        foreach (var (container, _) in references.ElementsWithBehaviorReference)
+            _fileCommands.TryAutoSaveElement(container);
+
+        _guiCommands.RefreshElementTreeView();
     }
 
     public void AddBehavior()

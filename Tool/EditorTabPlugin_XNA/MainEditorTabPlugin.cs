@@ -19,6 +19,7 @@ using Gum.Plugins.ScrollBarPlugin;
 using Gum.PropertyGridHelpers;
 using Gum.Services;
 using Gum.Services.Dialogs;
+using Gum.Services.Fonts;
 using Gum.Settings;
 using Gum.Themes;
 using Gum.ToolCommands;
@@ -125,7 +126,6 @@ internal class MainEditorTabPlugin : InternalPlugin, IRecipient<UiBaseFontSizeCh
     private readonly IUiSettingsService _uiSettingsService;
     private readonly IProjectManager _projectManager;
     private EditorViewModel _editorViewModel;
-    private readonly IOptionsMonitor<ThemeSettings> _themeSettings;
     private readonly FileLocations _fileLocations;
     private IDragDropManager _dragDropManager;
     WireframeControl _wireframeControl;
@@ -136,6 +136,7 @@ internal class MainEditorTabPlugin : InternalPlugin, IRecipient<UiBaseFontSizeCh
     private LayerService _layerService;
     private System.Windows.Controls.ContextMenu _wireframeContextMenu;
     private EditingManager _editingManager;
+    private readonly IDialogService _dialogService;
     private readonly IVariableInCategoryPropagationLogic _variableInCategoryPropagationLogic;
     private readonly IWireframeObjectManager _wireframeObjectManager;
 
@@ -167,6 +168,7 @@ internal class MainEditorTabPlugin : InternalPlugin, IRecipient<UiBaseFontSizeCh
 
         IUndoManager undoManager = Locator.GetRequiredService<IUndoManager>();
         IDialogService dialogService = Locator.GetRequiredService<IDialogService>();
+        _dialogService = dialogService;
         IHotkeyManager hotkeyManager = Locator.GetRequiredService<IHotkeyManager>();
 
         _elementCommands = Locator.GetRequiredService<IElementCommands>();
@@ -174,6 +176,8 @@ internal class MainEditorTabPlugin : InternalPlugin, IRecipient<UiBaseFontSizeCh
         _setVariableLogic = Locator.GetRequiredService<ISetVariableLogic>();
         _uiSettingsService = Locator.GetRequiredService<IUiSettingsService>();
         _wireframeCommands = Locator.GetRequiredService<WireframeCommands>();
+
+        _layerService = new Services.LayerService();
 
         _selectionManager = new SelectionManager(
             _selectedState,
@@ -214,11 +218,12 @@ internal class MainEditorTabPlugin : InternalPlugin, IRecipient<UiBaseFontSizeCh
         GraphicalUiElement.ThrowExceptionsForMissingFiles = CustomSetPropertyOnRenderable.ThrowExceptionsForMissingFiles;
         GraphicalUiElement.AddRenderableToManagers = CustomSetPropertyOnRenderable.AddRenderableToManagers;
         GraphicalUiElement.RemoveRenderableFromManagers = CustomSetPropertyOnRenderable.RemoveRenderableFromManagers;
+        CustomSetPropertyOnRenderable.FontService = Locator.GetRequiredService<IFontManager>();
         CustomSetPropertyOnRenderable.PropertyAssignmentError += HandlePropertyAssignmentError;
 
         AssignEvents();
 
-        var menuItem = AddMenuItem("File", "Export as Image");
+        var menuItem = AddMenuItem("File", "Export", "Export as Image");
         _screenshotService.InitializeMenuItem(menuItem);
         BeforeRender += _screenshotService.HandleBeforeRender;
         AfterRender += _screenshotService.HandleAfterRender;
@@ -394,7 +399,7 @@ internal class MainEditorTabPlugin : InternalPlugin, IRecipient<UiBaseFontSizeCh
 
     }
 
-    private void HandleSetHighlightedElement(IPositionedSizedObject? whatToHighlight)
+    private void HandleSetHighlightedElement(GraphicalUiElement? whatToHighlight)
     {
         _selectionManager.HighlightedIpso = whatToHighlight;
     }
@@ -689,7 +694,6 @@ internal class MainEditorTabPlugin : InternalPlugin, IRecipient<UiBaseFontSizeCh
     {
         _scrollbarService.HandleWireframeInitialized(_wireframeControl, gumEditorPanel);
 
-        _layerService = new Services.LayerService();
 
         _wireframeControl.Initialize(
             gumEditorPanel, 
@@ -849,8 +853,31 @@ internal class MainEditorTabPlugin : InternalPlugin, IRecipient<UiBaseFontSizeCh
         }
     }
 
+    private string? GetBaseTypeForExtension(string fileName)
+    {
+        string extension = FileManager.GetExtension(fileName);
+
+        if (extension == "svg")
+        {
+            if (ObjectFinder.Self.GetStandardElement("Svg") != null)
+            {
+                return "Svg";
+            }
+            return null;
+        }
+
+        return "Sprite";
+    }
+
     private void AddNewInstanceForDrop(string fileName, float worldX, float worldY)
     {
+        string? baseType = GetBaseTypeForExtension(fileName);
+        if (baseType == null)
+        {
+            _dialogService.ShowMessage("The Svg standard element is not available in this project. Cannot create an Svg instance.");
+            return;
+        }
+
         string nameToAdd = FileManager.RemovePath(FileManager.RemoveExtension(fileName));
 
         var element = _selectedState.SelectedElement;
@@ -860,7 +887,7 @@ internal class MainEditorTabPlugin : InternalPlugin, IRecipient<UiBaseFontSizeCh
 
         InstanceSave instance =
             _elementCommands.AddInstance(element, nameToAdd);
-        instance.BaseType = "Sprite";
+        instance.BaseType = baseType;
 
         _dragDropManager.SetInstanceToPosition(worldX, worldY, instance);
 
@@ -881,15 +908,18 @@ internal class MainEditorTabPlugin : InternalPlugin, IRecipient<UiBaseFontSizeCh
 
         // see if it's over the component:
         IPositionedSizedObject ipsoOver = _selectionManager.GetRepresentationAt(worldX, worldY, IsComponentNoInstanceSelected, elementStack);
-        if (ipsoOver?.Tag is ComponentSave component && (component.BaseType == "Sprite" || component.BaseType == "NineSlice"))
+        if (ipsoOver?.Tag is ComponentSave component && (component.BaseType == "Sprite" || component.BaseType == "NineSlice" || component.BaseType == "Svg"))
         {
             string fileName = FileManager.MakeRelative(files[0], _fileLocations.ProjectFolder, preserveCase:true);
+
+            string? baseType = GetBaseTypeForExtension(fileName);
+            string addNewLabel = "Add new " + (baseType ?? "Sprite");
 
             string message = "What do you want to do with the file " + fileName;
             DialogChoices<string> choices = new()
             {
                 ["set-source"] = "Set source file on " + component.Name,
-                ["_"] = "Add new Sprite"
+                ["_"] = addNewLabel
             };
 
             string? result = _dialogService.ShowChoices(message, choices, canCancel: true);
@@ -936,11 +966,14 @@ internal class MainEditorTabPlugin : InternalPlugin, IRecipient<UiBaseFontSizeCh
         {
             string fileName = FileManager.MakeRelative(files[0], _fileLocations.ProjectFolder, preserveCase:true);
 
+            string? baseType = GetBaseTypeForExtension(fileName);
+            string addNewLabel = "Add new " + (baseType ?? "Sprite");
+
             string message = "What do you want to do with the file " + fileName;
             DialogChoices<string> choices = new()
             {
                 ["set-source"] = "Set source file on " + instance.Name,
-                ["_"] = "Add new Sprite"
+                ["_"] = addNewLabel
             };
 
             string? result = _dialogService.ShowChoices(message, choices, canCancel: true);
@@ -1056,7 +1089,7 @@ internal class MainEditorTabPlugin : InternalPlugin, IRecipient<UiBaseFontSizeCh
         //_toolbarPanel.Width = _toolbarPanel.Parent.Width;
 
         _wireframeControl.Width = _wireframeControl.Parent.Width;
-           }
+    }
 
     private void HandleStateSelected(StateSave? save)
     {

@@ -45,13 +45,22 @@ namespace Gum.DataTypes
                     {
                         throw;
                     }
+                    else
+                    {
+                        // we tolerate them, we want to make sure they have a parent container at least:
+                        if(standardElementSave.DefaultState != null && 
+                            standardElementSave.DefaultState.ParentContainer == null)
+                        {
+                            standardElementSave.DefaultState.ParentContainer = standardElementSave;
+                        }
+                    }
                 }
             }
 
             foreach (ScreenSave screenSave in gumProjectSave.Screens)
             {
                 var stateSave = StandardElementsManager.Self.GetDefaultStateFor("Screen");
-                wasModified = screenSave.Initialize(stateSave) || wasModified;
+                wasModified = screenSave.Initialize(stateSave, tolerateMissingDefaultStates) || wasModified;
             }
 
 
@@ -254,7 +263,7 @@ namespace Gum.DataTypes
         {
             foreach (var element in gumProjectSave.StandardElements)
             {
-                var defaultState = StandardElementsManager.Self.GetDefaultStateFor(element.Name);
+                var defaultState = StandardElementsManager.Self.GetDefaultStateFor(element.Name, throwExceptionOnMissing:false);
                 if(defaultState != null)
                 {
                     foreach (var variable in defaultState.Variables)

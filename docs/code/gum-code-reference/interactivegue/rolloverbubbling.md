@@ -11,11 +11,12 @@ This event is raised top-down, with children object having the first opportunity
 The following code shows how to implement ListBox scrolling using the cursor when the cursor is pressed.
 
 ```csharp
+// Initialize
 // This will work with any item that has a scrollbar, such as
 // ListBox, ItemsControl, and ScrollViewer
 listBox.Visual.RollOverBubbling += (sender, args) =>
 {
-    var cursor = FormsUtilities.Cursor;
+    var cursor = GumService.Default.Cursor;
 
     // Only handle this if the crusor is pressed
     if (cursor.PrimaryDown)

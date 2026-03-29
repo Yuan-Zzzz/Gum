@@ -268,8 +268,8 @@ public class PluginManager : IPluginManager
     public void ShowDeleteDialog(DeleteOptionsWindow window, Array objectsToDelete) =>
         CallMethodOnPlugin(plugin => plugin.CallDeleteOptionsWindowShow(window, objectsToDelete));
 
-    public void DeleteConfirm(DeleteOptionsWindow window, Array objectsToDelete) => 
-        CallMethodOnPlugin(plugin => plugin.CallDeleteConfirm(window, objectsToDelete));
+    public void DeleteConfirmed(DeleteOptionsWindow window, Array objectsToDelete) =>
+        CallMethodOnPlugin(plugin => plugin.CallDeleteConfirmed(window, objectsToDelete));
 
     public void ElementRename(ElementSave elementSave, string oldName) =>
         CallMethodOnPlugin(plugin => plugin.CallElementRename(elementSave, oldName));
@@ -279,6 +279,9 @@ public class PluginManager : IPluginManager
 
     public void ElementDelete(ElementSave element) =>
         CallMethodOnPlugin(plugin => plugin.CallElementDelete(element));
+
+    public void ElementImported(ElementSave element) =>
+        CallMethodOnPlugin(plugin => plugin.CallElementImported(element));
 
     public void ElementDuplicate(ElementSave oldElement, ElementSave newElement) =>
         CallMethodOnPlugin(plugin => plugin.CallElementDuplicate(oldElement, newElement));
@@ -425,6 +428,12 @@ public class PluginManager : IPluginManager
     public void BehaviorInstanceAdd(BehaviorSave behavior, BehaviorInstanceSave instance) =>
         CallMethodOnPlugin(plugin => plugin.CallBehaviorInstanceAdd(behavior, instance));
 
+    public void BehaviorInstanceDelete(BehaviorSave behavior, BehaviorInstanceSave instance) =>
+        CallMethodOnPlugin(plugin => plugin.CallBehaviorInstanceDelete(behavior, instance));
+
+    public void BehaviorInstanceRename(BehaviorSave behavior, BehaviorInstanceSave instance) =>
+        CallMethodOnPlugin(plugin => plugin.CallBehaviorInstanceRename(behavior, instance));
+
     public StateSave? GetDefaultStateFor(string type)
     {
         StateSave? toReturn = null;
@@ -488,7 +497,7 @@ public class PluginManager : IPluginManager
         return toReturn;
     }
 
-    internal DeleteResponse GetDeleteStateResponse(StateSave stateSave, IStateContainer element)
+    public DeleteResponse GetDeleteStateResponse(StateSave stateSave, IStateContainer element)
     {
         DeleteResponse response = new DeleteResponse();
         response.ShouldDelete = true;
@@ -527,7 +536,7 @@ public class PluginManager : IPluginManager
         return response;
     }
 
-    internal DeleteResponse GetDeleteStateCategoryResponse(StateSaveCategory stateSaveCategory, IStateContainer element)
+    public DeleteResponse GetDeleteStateCategoryResponse(StateSaveCategory stateSaveCategory, IStateContainer element)
     {
         DeleteResponse response = new DeleteResponse();
         response.ShouldDelete = true;
@@ -585,7 +594,7 @@ public class PluginManager : IPluginManager
         CallMethodOnPlugin(plugin => plugin.CallReactToFileChanged(filePath));
     
 
-    public void SetHighlightedIpso(IPositionedSizedObject? positionedSizedObject) =>
+    public void SetHighlightedIpso(GraphicalUiElement? positionedSizedObject) =>
         CallMethodOnPlugin(plugin => plugin.CallSetHighlightedIpso(positionedSizedObject));
 
     public void HighlightTreeNode(IPositionedSizedObject? positionedSizedObject) =>

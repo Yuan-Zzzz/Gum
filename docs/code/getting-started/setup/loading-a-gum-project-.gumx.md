@@ -51,8 +51,8 @@ To add the Gum files to your csproj:
 ```xml
 <ItemGroup>
     <None Update="Content\GumProject\**\*.*">
-    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-  </None>
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
 </ItemGroup>
 ```
 
@@ -63,7 +63,9 @@ If you are using the Contentless project ([https://github.com/Ellpeck/Contentles
 
 {% tab title="MonoGame/KNI Android" %}
 ```xml
-<AndroidAsset Include="Content\GumProject\**\*.*" />
+<ItemGroup>
+    <AndroidAsset Include="Content\GumProject\**\*.*" />
+</ItemGroup>
 ```
 {% endtab %}
 
@@ -71,8 +73,8 @@ If you are using the Contentless project ([https://github.com/Ellpeck/Contentles
 ```xml
 <ItemGroup>
     <None Update="resources\GumProject\**\*.*">
-    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-  </None>
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
 </ItemGroup>
 ```
 {% endtab %}
@@ -85,6 +87,16 @@ If you are using the Contentless project ([https://github.com/Ellpeck/Contentles
 For more information about wildcard support in .csproj files, see this page on how to include wildcards in your .csproj:
 
 [https://learn.microsoft.com/en-us/visualstudio/msbuild/how-to-select-the-files-to-build?view=vs-2022#specify-inputs-with-wildcards](https://learn.microsoft.com/en-us/visualstudio/msbuild/how-to-select-the-files-to-build?view=vs-2022#specify-inputs-with-wildcards)
+
+### Sharing a .gumx File
+
+If your game targets multiple platforms, you may have multiple .csproj files. A single .csproj file can be linked by multiple projects. One way to achieve this is to create a linked wildcard include. For example, Gum files which are relative to a DesktopGL project can be included in an Android project using the following item in a .csproj file:
+
+```xml
+<ItemGroup>
+    <AndroidAsset Include="..\DesktopGL\Content\GumProject\**\*.*" Link="Content\GumProject\%(RecursiveDir)%(Filename)%(Extension)" />
+</ItemGroup>
+```
 
 ## Loading a Gum Project
 
@@ -125,6 +137,7 @@ By default the Gum path is relative to your game's Content folder.
 If your Gum project is not part of the the folder you can still load it by using the "../" prefix to step out of the Content folder. For example, the following code would load a Gum project located at `<exe location>/GumProject/GumProject.gumx`:
 
 ```csharp
+// Initialize
 GumUI.Initialize(
     this, "../GumProject/GumProject.gumx");
 ```
@@ -174,6 +187,7 @@ Note that calling ToGraphicalUiElement creates a [GraphicalUiElement](../../gum-
 You can get a reference to elements within the screen by calling `GetGraphicalUiElementByName`, as shown in the following code:
 
 ```csharp
+// Initialize
 // Load the gum project (see code above)
 var screenRuntime = ObjectFinder.Self.GumProject.Screens[0]
     .ToGraphicalUiElement();

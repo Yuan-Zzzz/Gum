@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net8.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<LangVersion>12.0</LangVersion>
+		<NoWarn>1591</NoWarn>
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="Gum.ProjectServices.Tests" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<EmbeddedResource Include="Templates\Default\Standards\*.gutx" />
+		<EmbeddedResource Include="Templates\Default\ExampleSpriteFrame.png" />
+		<EmbeddedResource Include="Templates\FormsTemplate\**\*" Exclude="Templates\FormsTemplate\FontCache\**\*;Templates\FormsTemplate\Libraries\**\*" />
+		<EmbeddedResource Include="..\..\Gum\Libraries\bmfont.exe" Link="Libraries\bmfont.exe" />
+		<EmbeddedResource Include="..\..\Gum\Content\BmfcTemplate.bmfc" Link="Content\BmfcTemplate.bmfc" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
+		<PackageReference Include="KernSmith" Version="0.9.5" />
+		<PackageReference Include="System.Reflection.MetadataLoadContext" Version="10.0.5" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\..\GumCommon\GumCommon.csproj" />
+	</ItemGroup>
+
+</Project>

@@ -31,6 +31,7 @@ using Gum.Settings;
 using ToolsUtilities;
 using Gum.Logic.FileWatch;
 using Gum.Reflection;
+using Gum.ProjectServices.FontGeneration;
 using Gum.Services.Fonts;
 using Gum.Localization;
 
@@ -102,7 +103,21 @@ file static class ServiceCollectionExtensions
         services.AddSingleton<IDeleteLogic, DeleteLogic>();
         services.AddSingleton<FileLocations>();
         services.AddSingleton<FileWatchLogic>();
-        services.AddSingleton<FontManager>();
+        services.AddSingleton<IFontGenerationCallbacks, ToolFontGenerationCallbacks>();
+        services.AddSingleton<IFontFileGenerator>(provider =>
+        {
+            IFontGenerationCallbacks callbacks = provider.GetRequiredService<IFontGenerationCallbacks>();
+            BmFontExeFileGenerator bmFont = new BmFontExeFileGenerator(callbacks);
+            KernSmithFileGenerator kernSmith = new KernSmithFileGenerator(callbacks);
+            IProjectState projectState = provider.GetRequiredService<IProjectState>();
+            return new FontFileGeneratorSelector(bmFont, kernSmith,
+                () => projectState.GumProjectSave?.FontGenerator ?? DataTypes.FontGeneratorType.BmFont);
+        });
+        services.AddSingleton<IHeadlessFontGenerationService>(provider =>
+            new HeadlessFontGenerationService(
+                provider.GetRequiredService<IFontFileGenerator>(),
+                provider.GetRequiredService<IFontGenerationCallbacks>()));
+        services.AddSingleton<IFontManager, FontManager>();
         services.AddSingleton<IHotkeyManager, HotkeyManager>();
         services.AddSingleton<LocalizationService>();
         services.AddSingleton<ISelectedState, SelectedState>();
@@ -124,11 +139,18 @@ file static class ServiceCollectionExtensions
         services.AddSingleton<IFileWatchManager>(provider => provider.GetRequiredService<FileWatchManager>());
         services.AddSingleton<ReorderLogic>();
         services.AddSingleton<IReorderLogic>(provider => provider.GetRequiredService<ReorderLogic>());
+        services.AddSingleton<InheritanceLogic>();
 
         services.AddSingleton<IUserProjectSettingsManager, UserProjectSettingsManager>();
+        services.AddSingleton<ProjectServices.ITypeResolver>(provider =>
+            new TypeManagerTypeResolverAdapter(provider.GetRequiredService<Reflection.ITypeManager>()));
+        services.AddSingleton<ProjectServices.IHeadlessErrorChecker>(provider =>
+            new ProjectServices.HeadlessErrorChecker(provider.GetRequiredService<ProjectServices.ITypeResolver>()));
         services.AddSingleton<ErrorChecker>();
         services.AddSingleton<IErrorChecker>(provider => provider.GetRequiredService<ErrorChecker>());
+        services.AddSingleton<IVariableSaveLogic, VariableSaveLogic>();
         services.AddSingleton<VariableReferenceLogic>();
+        services.AddSingleton<IReferenceFinder, ReferenceFinder>();
         services.AddSingleton<IRenameLogic, RenameLogic>();
         services.AddSingleton<ISetVariableLogic, SetVariableLogic>();
 

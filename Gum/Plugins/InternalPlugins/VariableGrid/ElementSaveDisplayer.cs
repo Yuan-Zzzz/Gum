@@ -41,7 +41,7 @@ public class ElementSaveDisplayer
     private readonly ISelectedState _selectedState;
     private readonly IUndoManager _undoManager;
     private readonly TypeManager _typeManager;
-    private readonly VariableSaveLogic _variableSaveLogic;
+    private readonly IVariableSaveLogic _variableSaveLogic;
     private readonly CategorySortAndColorLogic _categorySortAndColorLogic;
     private readonly IPluginManager _pluginManager;
     private readonly StandardElementsManager _standardElementsManager;
@@ -60,7 +60,8 @@ public class ElementSaveDisplayer
         bool IsAssignedByReference,
         string Subtext,
         string? DisplayName = null,
-        string? ToolTipText = null);
+        string? ToolTipText = null,
+        Dictionary<string, object>? PropertiesToSetOnDisplayer = null);
 
     #endregion
 
@@ -68,13 +69,14 @@ public class ElementSaveDisplayer
         TypeManager typeManager,
         ISelectedState selectedState,
         IUndoManager undoManager,
-        IPluginManager pluginManager)
+        IPluginManager pluginManager,
+        IVariableSaveLogic variableSaveLogic)
     {
         _subtextLogic = subtextLogic;
         _selectedState = selectedState;
-        _undoManager = undoManager;;
+        _undoManager = undoManager;
         _typeManager = typeManager;
-        _variableSaveLogic = new VariableSaveLogic();
+        _variableSaveLogic = variableSaveLogic;
         _categorySortAndColorLogic = new CategorySortAndColorLogic();
         _pluginManager = pluginManager;
         _standardElementsManager = StandardElementsManager.Self;
@@ -107,17 +109,15 @@ public class ElementSaveDisplayer
     {
         var currentState = _selectedState.SelectedStateSave;
         bool isDefault = currentState == _selectedState.SelectedElement.DefaultState;
-        if (instanceSave?.DefinedByBase == true)
-        {
-            isDefault = false;
-        }
+
+        bool isDefinedByBase = instanceSave?.DefinedByBase == true;
 
         var effectiveElementSave = instanceSave == null ? instanceOwner : instanceSave.GetBaseElementSave();
 
         bool isCustomType = (effectiveElementSave is StandardElementSave) == false;
         if (isCustomType || instanceSave != null)
         {
-            AddNameAndBaseTypeProperties(propertyList, instanceOwner, instanceSave, isReadOnly: isDefault == false);
+            AddNameAndBaseTypeProperties(propertyList, instanceOwner, instanceSave, isReadOnly: isDefault == false || isDefinedByBase);
         }
 
         if (instanceSave != null)
@@ -403,13 +403,14 @@ public class ElementSaveDisplayer
         var properties = GetProperties(instanceOwner, instance, stateSave);
 
         StateSave defaultState;
+        ElementSave? instanceElementSave = null;
         if(instance == null)
         {
             defaultState = GetRecursiveStateFor(instanceOwner);
         }
         else
         {
-            GetDefaultState(instance, out ElementSave elementSave, out defaultState);
+            GetDefaultState(instance, out instanceElementSave, out defaultState);
         }
 
 
@@ -449,6 +450,20 @@ public class ElementSaveDisplayer
 
             bool shouldInclude = GetIfShouldInclude(variableList, instanceOwner, instance)
                 && !variableList.IsHiddenInPropertyGrid;
+
+            if (shouldInclude && instance != null && instanceElementSave != null)
+            {
+                if (ObjectFinder.Self.IsVariableHiddenRecursively(instanceElementSave, variableList.Name))
+                {
+                    var qualifiedName = instance.Name + "." + variableList.Name;
+                    var currentState = _selectedState.SelectedStateSave;
+                    var isExplicitlySet = currentState?.VariableLists.Any(vl => vl.Name == qualifiedName) == true;
+                    if (!isExplicitlySet)
+                    {
+                        shouldInclude = false;
+                    }
+                }
+            }
 
             if (shouldInclude)
             {
@@ -504,6 +519,14 @@ public class ElementSaveDisplayer
                 if(srim.PreferredDisplayer == null)
                 {
                     srim.PreferredDisplayer = typeof(ListBoxDisplay);
+                }
+
+                if (instance == null && instanceOwner.VariablesHiddenFromInstances?.Contains(variableList.Name) == true)
+                {
+                    var hiddenText = "Hidden from instances";
+                    srim.DetailText = string.IsNullOrEmpty(srim.DetailText)
+                        ? hiddenText
+                        : srim.DetailText + "\n" + hiddenText;
                 }
 
                 string? category = variableList.Category;
@@ -584,6 +607,14 @@ public class ElementSaveDisplayer
         }
 
         srim.ToolTipText = propertyData.ToolTipText;
+
+        if (propertyData.PropertiesToSetOnDisplayer != null)
+        {
+            foreach (var kvp in propertyData.PropertiesToSetOnDisplayer)
+            {
+                srim.PropertiesToSetOnDisplayer[kvp.Key] = kvp.Value;
+            }
+        }
 
         // moved to internal
         //srim.SetToDefault += (memberName) => ResetVariableToDefault(srim);
@@ -773,6 +804,23 @@ public class ElementSaveDisplayer
 
         shouldInclude &= !addedNames.Contains(defaultVariable.Name);
 
+        if (shouldInclude && instanceSave != null)
+        {
+            var hiddenCheckName = !string.IsNullOrEmpty(defaultVariable.ExposedAsName)
+                ? defaultVariable.ExposedAsName
+                : defaultVariable.Name;
+            if (ObjectFinder.Self.IsVariableHiddenRecursively(elementSave, hiddenCheckName))
+            {
+                var qualifiedName = instanceSave.Name + "." + defaultVariable.Name;
+                var currentState = _selectedState.SelectedStateSave;
+                var isExplicitlySet = currentState?.Variables.Any(v => v.Name == qualifiedName) == true;
+                if (!isExplicitlySet)
+                {
+                    shouldInclude = false;
+                }
+            }
+        }
+
         var isState = defaultVariable.IsState(elementSave, out ElementSave categoryContainer, out StateSaveCategory categorySave);
 
         if(isState && shouldInclude)
@@ -839,6 +887,17 @@ public class ElementSaveDisplayer
 
             var propertySubtext = _subtextLogic.GetDefaultSubtext(defaultVariable, subtext, name, elementSave, instanceSave);
 
+            var hiddenIndicatorName = !string.IsNullOrEmpty(defaultVariable.ExposedAsName)
+                ? defaultVariable.ExposedAsName
+                : defaultVariable.Name;
+            if (instanceSave == null && elementSave.VariablesHiddenFromInstances?.Contains(hiddenIndicatorName) == true)
+            {
+                var hiddenText = "Hidden from instances";
+                propertySubtext = string.IsNullOrEmpty(propertySubtext)
+                    ? hiddenText
+                    : propertySubtext + "\n" + hiddenText;
+            }
+
             return new PropertyData(name, type, customAttributes, typeConverter, category, forceReadOnly, isAssignedByReference, propertySubtext,
                 ToolTipText: defaultVariable.ToolTipText);
         }
@@ -893,7 +952,8 @@ public class ElementSaveDisplayer
         {
             var baseTypeConverter = new AvailableBaseTypeConverter(instanceOwner, instance);
             // We may want to support Screens inheriting from other Screens in the future, but for now we won't allow it
-            pdc.Add(new PropertyData("BaseType", typeof(string), new Attribute[0], baseTypeConverter, "", isReadOnly, false, null));
+            pdc.Add(new PropertyData("BaseType", typeof(string), new Attribute[0], baseTypeConverter, "", isReadOnly, false, null,
+                PropertiesToSetOnDisplayer: new Dictionary<string, object> { [nameof(ComboBoxDisplay.IsEditable)] = true }));
         }
     }
 

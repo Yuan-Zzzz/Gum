@@ -45,10 +45,14 @@ public abstract class PluginBase : IPlugin
     public event Action<ElementSave>? AfterElementSave;
     public event Action<ElementSave>? Export;
     public event Action<DeleteOptionsWindow, Array>? DeleteOptionsWindowShow;
-    public event Action<DeleteOptionsWindow, Array>? DeleteConfirm;
+    public event Action<DeleteOptionsWindow, Array>? DeleteConfirmed;
 
     public event Action<ElementSave>? ElementAdd;
     public event Action<ElementSave>? ElementDelete;
+    /// <summary>
+    /// Raised when an element (screen or component) is imported into the project.
+    /// </summary>
+    public event Action<ElementSave>? ElementImported;
     /// <summary>
     /// Raised when an element is duplicated. First argument is the old element, second is the new.
     /// </summary>
@@ -178,6 +182,16 @@ public abstract class PluginBase : IPlugin
     /// </summary>
     public event Action<BehaviorSave, BehaviorInstanceSave>? BehaviorInstanceAdd;
 
+    /// <summary>
+    /// Event raised whenever an instance is removed from a behavior's RequiredInstances list.
+    /// </summary>
+    public event Action<BehaviorSave, BehaviorInstanceSave>? BehaviorInstanceDelete;
+
+    /// <summary>
+    /// Event raised whenever an instance in a behavior's RequiredInstances list is renamed.
+    /// </summary>
+    public event Action<BehaviorSave, BehaviorInstanceSave>? BehaviorInstanceRename;
+
     public event Action? RefreshBehaviorView;
     public event Action<bool>? RefreshVariableView;
 
@@ -212,7 +226,7 @@ public abstract class PluginBase : IPlugin
     // Parameters are: extension, parentElement, instance, changedMember
     public event Func<string, ElementSave, InstanceSave, string, bool>? IsExtensionValid;
 
-    public event Action<IPositionedSizedObject?>? SetHighlightedIpso;
+    public event Action<GraphicalUiElement?>? SetHighlightedIpso;
     public event Action<IPositionedSizedObject?>? HighlightTreeNode;
     public event Action<IPositionedSizedObject?>? IpsoSelected;
     public event Func<IEnumerable<IPositionedSizedObject>?> GetSelectedIpsos;
@@ -372,13 +386,15 @@ public abstract class PluginBase : IPlugin
     public void CallDeleteOptionsWindowShow(DeleteOptionsWindow optionsWindow, Array objectsToDelete) =>
             DeleteOptionsWindowShow?.Invoke(optionsWindow, objectsToDelete);
 
-    public void CallDeleteConfirm(DeleteOptionsWindow optionsWindow, Array deletedObjects) =>
-        DeleteConfirm?.Invoke(optionsWindow, deletedObjects);
+    public void CallDeleteConfirmed(DeleteOptionsWindow optionsWindow, Array deletedObjects) =>
+        DeleteConfirmed?.Invoke(optionsWindow, deletedObjects);
     
     public void CallElementAdd(ElementSave element) =>
         ElementAdd?.Invoke(element);
     public void CallElementDelete(ElementSave element) =>
         ElementDelete?.Invoke(element);
+    public void CallElementImported(ElementSave element) =>
+        ElementImported?.Invoke(element);
     public void CallElementDuplicate(ElementSave oldElement, ElementSave newElement) =>
         ElementDuplicate?.Invoke(oldElement, newElement);
     public void CallElementRename(ElementSave elementSave, string oldName) =>
@@ -451,6 +467,8 @@ public abstract class PluginBase : IPlugin
     public void CallInstanceAdd(ElementSave elementSave, InstanceSave instance) => InstanceAdd?.Invoke(elementSave, instance);
 
     public void CallBehaviorInstanceAdd(BehaviorSave behavior, BehaviorInstanceSave instance) => BehaviorInstanceAdd?.Invoke(behavior, instance);
+    public void CallBehaviorInstanceDelete(BehaviorSave behavior, BehaviorInstanceSave instance) => BehaviorInstanceDelete?.Invoke(behavior, instance);
+    public void CallBehaviorInstanceRename(BehaviorSave behavior, BehaviorInstanceSave instance) => BehaviorInstanceRename?.Invoke(behavior, instance);
 
     public void CallBehaviorReferencesChanged(ElementSave element) => BehaviorReferencesChanged?.Invoke(element);
 
@@ -509,7 +527,7 @@ public abstract class PluginBase : IPlugin
     public bool CallIsExtensionValid(string extension, ElementSave parentElement, InstanceSave instance, string changedMember) =>
         IsExtensionValid?.Invoke(extension, parentElement, instance, changedMember) ?? false;
 
-    public void CallSetHighlightedIpso(IPositionedSizedObject? element) =>
+    public void CallSetHighlightedIpso(GraphicalUiElement? element) =>
         SetHighlightedIpso?.Invoke(element);
 
     public void CallHighlightTreeNode(IPositionedSizedObject? ipso) =>

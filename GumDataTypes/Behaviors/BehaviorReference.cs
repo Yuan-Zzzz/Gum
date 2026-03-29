@@ -35,14 +35,14 @@ namespace Gum.DataTypes.Behaviors
             }
         }
 
-        private static BehaviorSave DeserializeBehavior(string filePath, int projectVersion)
+        public static BehaviorSave DeserializeBehavior(string filePath, int projectVersion)
         {
             if (projectVersion >= (int)GumProjectSave.GumxVersions.AttributeVersion)
             {
-                var (content, isCompact) = VariableSaveSerializer.ReadAndDetectFormat(filePath);
+                var (content, isCompact) = GumFileSerializer.ReadAndDetectFormat(filePath);
                 if (isCompact)
                 {
-                    var compactSerializer = VariableSaveSerializer.GetCompactSerializer(typeof(BehaviorSave));
+                    var compactSerializer = GumFileSerializer.GetCompactSerializer(typeof(BehaviorSave));
                     using var reader = new StringReader(content);
                     return (BehaviorSave)compactSerializer.Deserialize(reader);
                 }

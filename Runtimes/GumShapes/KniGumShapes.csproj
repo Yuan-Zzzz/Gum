@@ -8,7 +8,7 @@
 		<PackageId>Gum.Shapes.KNI</PackageId>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 
-		<Version>2026.2.23.1</Version>
+		<Version>2026.3.28.2</Version>
 		<NoWarn>1591</NoWarn>
 
 		<GenerateDocumentationFile>true</GenerateDocumentationFile>
@@ -20,8 +20,12 @@
 	<ItemGroup>
 		<Compile Remove="bin\**" />
 		<Compile Remove="obj\**" />
+		<Compile Remove="XnbBuilder\**" />
+		<Compile Remove="XnbTest\**" />
 		<EmbeddedResource Remove="bin\**" />
 		<EmbeddedResource Remove="obj\**" />
+		<EmbeddedResource Remove="XnbBuilder\**" />
+		<EmbeddedResource Remove="XnbTest\**" />
 		<None Remove="bin\**" />
 		<None Remove="obj\**" />
 	</ItemGroup>
@@ -31,7 +35,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<PackageReference Include="Apos.Shapes.KNI" Version="0.6.3-alpha" />
+		<PackageReference Include="Apos.Shapes.KNI" Version="0.6.8" />
 		<PackageReference Include="nkast.Xna.Framework" Version="4.2.9001" PrivateAssets="All" />
 		<PackageReference Include="nkast.Xna.Framework.Content" Version="4.2.9001" PrivateAssets="All" />
 		<PackageReference Include="nkast.Xna.Framework.Graphics" Version="4.2.9001" PrivateAssets="All" />
@@ -47,6 +51,13 @@
 
 	<ItemGroup>
 	  <ProjectReference Include="..\..\MonoGameGum\KniGum\KniGum.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Include="buildTransitive\Gum.Shapes.KNI.props" Pack="true" PackagePath="buildTransitive\" />
+		<None Include="buildTransitive\Content\DesktopGL\apos-shapes.xnb" Pack="true" PackagePath="buildTransitive\Content\DesktopGL\" />
+		<None Include="buildTransitive\Content\Windows\apos-shapes.xnb" Pack="true" PackagePath="buildTransitive\Content\Windows\" />
+		<None Include="buildTransitive\Content\BlazorGL\apos-shapes.xnb" Pack="true" PackagePath="buildTransitive\Content\BlazorGL\" />
 	</ItemGroup>
 
 </Project>

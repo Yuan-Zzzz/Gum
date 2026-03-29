@@ -12,7 +12,7 @@ These methods match the Anchor and Dock actions which can be performed in the Gu
 
 <figure><img src="../../.gitbook/assets/15_16 56 39.png" alt=""><figcaption><p>Nine standard anchor values</p></figcaption></figure>
 
-`Anchor` has 2 other values `CenterHorizontally` and `CenterVertically`. &#x20;
+`Anchor` has 2 other values `CenterHorizontally` and `CenterVertically`.
 
 1. `CenterHorizontally` sets the X related variables only, leaving the Y related variables unchanged.
 2. `CenterVertically` sets the Y related variables only, leaving the X related variables unchanged.
@@ -34,6 +34,7 @@ This allows you to Have an element locked to the center position of the horizont
 The following code shows how to create a centered panel using `Anchor`. Two buttons are added, with the first using `Dock.Top` and the other using `Dock.Bottom`.
 
 ```csharp
+// Initialize
 var panel = new Panel();
 panel.AddToRoot();
 panel.Anchor(Gum.Wireframe.Anchor.Center);
@@ -68,7 +69,8 @@ Once either `Anchor` or `Dock` are called, additional property assignments can b
 
 For example, we could add events to each of the `Buttons` above to adjust the `Panel's` `Width` and `Height`. When the `Panel` adjusts, the buttons and background automatically in response.
 
-<pre class="language-csharp"><code class="lang-csharp">var panel = new Panel();
+<pre class="language-csharp"><code class="lang-csharp">// Initialize
+var panel = new Panel();
 panel.AddToRoot();
 panel.Anchor(Gum.Wireframe.Anchor.Center);
 // give this an explicit size, so docked buttons
@@ -103,7 +105,8 @@ button2.Text = "Bottom Docked Button";
 
 Similarly, we can adjust the position or size of our `Buttons` after calling `Dock` to create margins. Gum does not have Margin or Padding properties, but these can be effectively created using position (`X` or `Y`) and size values (`Width` or `Height`) as shown in the following code:
 
-<pre class="language-csharp"><code class="lang-csharp">var panel = new Panel();
+<pre class="language-csharp"><code class="lang-csharp">// Initialize
+var panel = new Panel();
 panel.AddToRoot();
 panel.Anchor(Gum.Wireframe.Anchor.Center);
 // give this an explicit size, so docked buttons
@@ -147,7 +150,8 @@ Once a `Button` is given a `Top` or `Bottom` `Dock`, its `Width` value is relati
 
 Alternatively, an internal `Panel` can be used to create a margin. Although this does add extra code, additional `Panels` can be used to create advanced layouts or to organize your elements for maintainability. The following code uses a dedicated `Panel` named `innerPanel` to create margins for the `Buttons`:
 
-<pre class="language-csharp"><code class="lang-csharp">var panel = new Panel();
+<pre class="language-csharp"><code class="lang-csharp">// Initialize
+var panel = new Panel();
 panel.AddToRoot();
 panel.Anchor(Gum.Wireframe.Anchor.Center);
 // give this an explicit size, so docked buttons
@@ -201,7 +205,8 @@ If `innerPanel` is included, then the dependency exists across multiple levels. 
 
 Since the `panel` is ultimately the deciding control for width, we explicitly set its `WidthUnits` and `HeightUnits` to `Absolute`. If we remove this, then the panel's default `WidthUnits` and `HeightUnits` are used, which result in the `Panel` being sized to its children. This creates a circular dependency, resulting in our buttons having an effective width of 0 as shown in the following code:
 
-<pre class="language-csharp"><code class="lang-csharp">var panel = new Panel();
+<pre class="language-csharp"><code class="lang-csharp">// Initialize
+var panel = new Panel();
 panel.AddToRoot();
 panel.Anchor(Gum.Wireframe.Anchor.Center);
 <strong>// Remove the explicit size so that it sizes to its contents, causing
@@ -237,7 +242,7 @@ button2.Text = "Bottom Docked Button";
 button2.Click += (_, _) => panel.Height -= 20;
 </code></pre>
 
-<figure><img src="../../.gitbook/assets/image (1) (1) (1) (1).png" alt=""><figcaption><p>Buttons with 0 width, wrapping their text</p></figcaption></figure>
+<figure><img src="../../.gitbook/assets/image (1) (1) (1) (1) (1).png" alt=""><figcaption><p>Buttons with 0 width, wrapping their text</p></figcaption></figure>
 
 We can resolve this by bringing back the code to make `panel` be sized with absolute units (pixels), or we can size everything bottom-up as shown in the next section.
 
@@ -245,7 +250,8 @@ We can resolve this by bringing back the code to make `panel` be sized with abso
 
 We can invert the dependencies by giving the bottom-most children (`button` and `button2`) absolute size values, then sizing their parents according to children. For example, the following code sizes the entire `Panel` according to its children.
 
-<pre class="language-csharp"><code class="lang-csharp">float buttonMargin = 8;
+<pre class="language-csharp"><code class="lang-csharp">// Initialize
+float buttonMargin = 8;
 
 var panel = new Panel();
 panel.AddToRoot();

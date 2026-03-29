@@ -29,7 +29,7 @@ public class ItemsControl : ScrollViewer
     } = string.Empty;
 
 
-    IList items = new ObservableCollection<object>();
+    IList? items = new ObservableCollection<object>();
     /// <summary>
     /// The items contained by this ItemsControl. This can contain regular
     /// data such as strings, instances of ViewModels, or FrameworkElement instances
@@ -49,7 +49,7 @@ public class ItemsControl : ScrollViewer
     /// Children will remain in sync since the ItemsControl automatically creates FrameworkElement instances
     /// in response to the Items.
     /// </remarks>
-    public IList Items
+    public IList? Items
     {
         get => items;
         set
@@ -418,9 +418,11 @@ public class ItemsControl : ScrollViewer
 
                         }
 
-                        InnerPanel?.Children.Insert(index, newVisual);
-
-                        newVisual.Parent = InnerPanel;
+                        if (newVisual.Parent != InnerPanel)
+                        {
+                            InnerPanel?.Children.Insert(index, newVisual);
+                            newVisual.Parent = InnerPanel;
+                        }
                         // handled by the panel being updated:
                         //HandleCollectionNewItemCreated(newItem, index);
 
@@ -429,7 +431,7 @@ public class ItemsControl : ScrollViewer
                     if (shouldSuppressLayout)
                     {
                         GraphicalUiElement.IsAllLayoutSuspended = wasSuppressed;
-                        if (!wasSuppressed)
+                        if (!wasSuppressed && IsVisible)
                         {
                             InnerPanel?.ResumeLayout(recursive: true);
                         }

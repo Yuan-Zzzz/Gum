@@ -1,5 +1,6 @@
 ﻿using Gum.ToolStates;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Gum.Plugins.ImportPlugin.Manager;
 using ToolsUtilities;
@@ -8,6 +9,7 @@ using Gum.Managers;
 using Gum.Commands;
 using Gum.Services;
 using Gum.Services.Dialogs;
+using Gum.Logic.FileWatch;
 
 namespace GumFormsPlugin.ViewModels;
 
@@ -20,6 +22,7 @@ public class AddFormsViewModel : DialogViewModel
     private readonly IFileCommands _fileCommands;
     private readonly IImportLogic _importLogic;
     private readonly IProjectState _projectState;
+    private readonly IFileWatchManager _fileWatchManager;
 
     public bool IsIncludeDemoScreenGum
     {
@@ -33,13 +36,15 @@ public class AddFormsViewModel : DialogViewModel
         IDialogService dialogService,
         IFileCommands fileCommands,
         IImportLogic importLogic,
-        IProjectState projectState)
+        IProjectState projectState,
+        IFileWatchManager fileWatchManager)
     {
         _formsFileService = formsFileService;
         _dialogService = dialogService;
         _fileCommands = fileCommands;
         _importLogic = importLogic;
         _projectState = projectState;
+        _fileWatchManager = fileWatchManager;
     }
 
     public override void OnAffirmative()
@@ -98,25 +103,24 @@ public class AddFormsViewModel : DialogViewModel
 
     private void SaveFilesToDestination(Dictionary<string, FilePath> sourceDestinations)
     {
-        var assembly = GetType().Assembly;
         foreach (var kvp in sourceDestinations)
         {
-            var source = kvp.Key;
+            var sourcePath = kvp.Key;
             var destination = kvp.Value;
 
             var extension = destination.Extension;
 
-            // don't save the project, we don't want to overwrite it because that would wipe existing
+            // don't save the project file — overwriting it would wipe existing
             // projects which may have screens or other components referenced.
+            if (extension == "gumx") continue;
 
-            var isGumx = extension == "gumx";
 
-            var shouldSave = isGumx == false;
+            var directory = Path.GetDirectoryName(destination.FullPath)!;
 
-            if (shouldSave)
-            {
-                FileManager.SaveEmbeddedResource(assembly, kvp.Key, kvp.Value.FullPath);
-            }
+            _fileWatchManager.IgnoreNextChangeUntil(directory);
+            _fileWatchManager.IgnoreNextChangeUntil(destination.FullPath);
+            Directory.CreateDirectory(directory);
+            File.Copy(sourcePath, destination.FullPath, overwrite: true);
         }
     }
 

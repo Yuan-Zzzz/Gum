@@ -68,7 +68,7 @@ public class SelectionChangedEventArgs
 /// The base object for all interactive Gum runtime objects. It provides events for cursor interaction which can be used
 /// to create full interactive controls
 /// </summary>
-public partial class InteractiveGue : BindableGue
+public partial class InteractiveGue : GraphicalUiElement
 {
 
     static List<Action> nextPushActions = new List<Action>();
@@ -296,7 +296,7 @@ public partial class InteractiveGue : BindableGue
     public void CallRightClick() => RightClick?.Invoke(this, EventArgs.Empty);  
 
     // RollOff is determined outside of the individual InteractiveGue so we need to have this callable externally..
-    public void TryCallRollOff(ICursor cursor = null)
+    public void TryCallRollOff(ICursor? cursor = null)
     {
         InputEventArgs args = new InputEventArgs { InputDevice = cursor };
         RollOff?.Invoke(this, args);
@@ -324,13 +324,13 @@ public partial class InteractiveGue : BindableGue
 
     #endregion
 
-    private bool DoUiActivityRecursively(ICursor cursor, Layer layer, HandledActions handledActions = null)
+    private bool DoUiActivityRecursively(ICursor cursor, Layer layer, HandledActions? handledActions = null)
     {
         return DoUiActivityRecursively(cursor, handledActions, this, layer);
 
     }
 
-    internal static bool DoUiActivityRecursively(ICursor cursor, HandledActions handledActions, GraphicalUiElement currentItem, Layer? layer)
+    internal static bool DoUiActivityRecursively(ICursor cursor, HandledActions? handledActions, GraphicalUiElement currentItem, Layer? layer)
     {
         handledActions = handledActions ?? new HandledActions();
         bool handledByChild = false;
@@ -598,10 +598,12 @@ public partial class InteractiveGue : BindableGue
     /// cursor hit detection.
     /// </remarks>
     /// <param name="cursor">The cursor to check whether it is over this.</param>
+    /// <param name="layer">Optional layer to use for coordinate conversion. 
+    /// If this is null, then the top-most parent GraphicalUiElement's layer will be used.</param>
     /// <returns>Whether the cursor is over this.</returns>
     public virtual bool HasCursorOver(ICursor cursor, Layer? layer = null)
     {
-        layer = layer ?? (this.GetTopParent() as GraphicalUiElement).Layer;
+        layer = layer ?? ((GraphicalUiElement)this.GetTopParent()).Layer;
 
         bool toReturn = false;
 
@@ -1199,10 +1201,6 @@ public static class GueInteractiveExtensionMethods
 
         if(visualOverBefore != cursor.VisualOver)
         {
-            string GetInfoFor(InteractiveGue interactive)
-            {
-                return interactive?.Name + " " + interactive?.GetType();
-            }
             if (visualOverBefore is InteractiveGue interactiveBefore)
             {
                 interactiveBefore.TryCallRollOff(cursor);

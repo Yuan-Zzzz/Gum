@@ -97,7 +97,6 @@ public class MainStateAnimationPlugin : PluginBase
         AssignEvents();
     }
 
-
     private void CreateMenuItems()
     {
         menuItem = AddMenuItem("View", "View Animations");
@@ -128,11 +127,10 @@ public class MainStateAnimationPlugin : PluginBase
         this.GetDeleteStateCategoryResponse = HandleGetDeleteStateCategoryResponse;
 
         this.DeleteOptionsWindowShow += _elementDeleteService.HandleDeleteOptionsWindowShow;
-        this.DeleteConfirm += _elementDeleteService.HandleConfirmDelete;
+        this.DeleteConfirmed += _elementDeleteService.HandleConfirmDelete;
 
         this.GetAllErrors += HandleGetAllErrors;
     }
-
 
     private void HandleElementSelected(ElementSave? element)
     {

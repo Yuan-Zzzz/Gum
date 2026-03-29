@@ -15,7 +15,7 @@ on:
         type: boolean
 
 env:
-  DOTNET_VERSIONS: '6.0.x;8.0.x;10.0.x' # Multiple .NET versions
+  DOTNET_VERSIONS: '6.0.x;8.0.x;9.0.x' # Multiple .NET versions
   CONFIGURATION: Release
   SOLUTION_FILE: 'AllLibraries.sln' # Specify which solution to build
 
@@ -36,7 +36,7 @@ jobs:
         dotnet-version: |
           6.0.x
           8.0.x
-          10.0.x
+          9.0.x
 
     - name: Install required workloads
       run: |
@@ -56,7 +56,14 @@ jobs:
     # Pack NuGet packages (Debug build) - includes both .nupkg and .snupkg
     - name: Pack NuGet packages
       run: dotnet pack ${{ env.SOLUTION_FILE }} --configuration ${{ env.CONFIGURATION }} --no-build --output ./nupkgs --include-symbols --include-source
-    
+
+    # Build and pack GumCli as a dotnet tool (not in AllLibraries.sln)
+    - name: Build GumCli
+      run: dotnet build Tools/Gum.Cli/Gum.Cli.csproj --configuration ${{ env.CONFIGURATION }}
+
+    - name: Pack GumCli
+      run: dotnet pack Tools/Gum.Cli/Gum.Cli.csproj --configuration ${{ env.CONFIGURATION }} --no-build --output ./nupkgs
+
     # Upload artifacts for inspection (both .nupkg and .snupkg)
     - name: Upload NuGet packages as artifacts
       uses: actions/upload-artifact@v4

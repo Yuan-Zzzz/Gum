@@ -46,6 +46,9 @@ public class LoaderManager
     //bool mCacheTextures = false;
     bool mCacheTextures = true;
     Dictionary<string, IDisposable> mCachedDisposables = new Dictionary<string, IDisposable>(StringComparer.OrdinalIgnoreCase);
+
+    public IReadOnlyDictionary<string, IDisposable> CachedDisposables => mCachedDisposables;
+
     public bool CacheTextures
     {
         get { return mCacheTextures; }
@@ -87,10 +90,23 @@ public class LoaderManager
 #if FULL_DIAGNOSTICS
         if (this.ContentLoader == null)
         {
-            throw new Exception("The content loader is null - you must set it prior to calling LoadContent.");
+            throw new Exception("The content loader is null - you must set it prior to calling LoadContent. " +
+                "If you haven't yet, you must first initialize Gum.");
         }
 #endif
         return ContentLoader.TryLoadContent<T>(contentName);
+    }
+
+    public T TryGetCachedDisposable<T>(string contentName)
+    {
+        if (mCachedDisposables.ContainsKey(contentName))
+        {
+            return (T)mCachedDisposables[contentName];
+        }
+        else
+        {
+            return default(T);
+        }
     }
 
     public IDisposable? GetDisposable(string name)

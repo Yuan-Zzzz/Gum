@@ -11,6 +11,7 @@ By default the ScrollViewer's InnerPanel expands automatically in response to it
 ScrollViewers can contain other forms controls. The following code creates a ScrollViewer and adds buttons using the AddChild method.
 
 ```csharp
+// Initialize
 var scrollViewer = new ScrollViewer();
 scrollViewer.AddToRoot();
 scrollViewer.X = 50;
@@ -29,6 +30,8 @@ for (int i = 0; i < 30; i++)
 }
 ```
 
+[Try on XnaFiddle.NET](https://xnafiddle.net/#snippet=H4sIAAAAAAAACm2PT0vDQBDF74F8hyGnhJQlKF6sEbSC9iJign8gUNZkbYZuZ2U7MWLpd3eTKNSme5md33szzNv6HkAw39w26-Ac2DZq0hMkZJQav5XDwae0sCmt0foJVasspECqhWwPhdG0oH2PuKqq3Dwaw2PpxS04Sw7p61H6jBXXTjlJRtKdwmXNx7U5kbIPkpQWGctylX3IEmnZmZ21oHdjIURiQIeSqSsXcNrVOI4K2hYE7nW53xpmQ7-Jr_umD9Tph3lnNeoqHCb-PEMncvXVXVoEwwr3gRjwv2emsVxBnEK4mMAigvRykMdrbiSrHNdK3JtW5CZj67L1Z-0C39v53g-0fe7K2AEAAA)
+
 <figure><img src="../../../.gitbook/assets/13_09 43 23.gif" alt=""><figcaption><p>Children in a ScrollViewer</p></figcaption></figure>
 
 ## Scrolling a ScrollViewer
@@ -45,6 +48,7 @@ ScrollViewers can be scrolled by the user using by performing any of the followi
 The following code creates a ScrollViewer and adds ColoredRectangleRuntimes to the ScrollViewer. Any non-Forms visual object can be added to the ScrollViewer through AddChild.
 
 ```csharp
+// Initialize
 var scrollViewer = new ScrollViewer();
 scrollViewer.AddToRoot();
 scrollViewer.X = 50;
@@ -66,6 +70,8 @@ for (int i = 0; i < 30; i++)
 }
 ```
 
+[Try on XnaFiddle.NET](https://xnafiddle.net/#snippet=H4sIAAAAAAAACnVRwU4CMRS8k_APL3tahCyI4SJ6MByUizG7RiXZS7P7ZF_svpq2iEr8d9sqZIGllyYz03lvpptuByCam9tVHV2C1SscBISYLAlJ3-jg6ENoMIVWUj4RrlHDNTCuIWtAcW-ac1OT3JTlo0qVssfUizOYjA7RRSv6TKWtHDMeHVF3SMvKtnNzZtQPglEmmRXFW_YuCuKlFztpzj6SFlyqehvmy1iskzRgYeVXpSEmtkBOMpq66wou_N3v93Le5AzueB_ys1IsrOClxH-_mZJKY7mD0xVbqjE4-4eHXc0qkmW8b7XV7qOhvr_dk3v8tJnLJZ0xnMF56M8_GQ6BlVsES7AKDLoU-yYLMMQFAoqiAr1b3viyTOvY7U-4Dlr53XecEoRKmvXEjRTxeDLpDZq5TiC-lJ-o2_npdn4Bp89eML4CAAA)
+
 <figure><img src="../../../.gitbook/assets/13_09 44 12.gif" alt=""><figcaption><p>ScrollViewer displaying multiple ColoredRectangles</p></figcaption></figure>
 
 ## Code Example: Wrapping Children
@@ -73,12 +79,13 @@ for (int i = 0; i < 30; i++)
 The following code shows how to wrap children in a ScrollViewer. It modifies the `InnerPanel` to change the layout type.
 
 ```csharp
+// Initialize
 var scrollViewer = new ScrollViewer();
 scrollViewer.Width = 310;
 scrollViewer.AddToRoot();
-scrollViewer.Anchor(Anchor.Center);
+scrollViewer.Anchor(Gum.Wireframe.Anchor.Center);
 var innerPanel = scrollViewer.InnerPanel;
-innerPanel.ChildrenLayout = ChildrenLayout.LeftToRightStack;
+innerPanel.ChildrenLayout = Gum.Managers.ChildrenLayout.LeftToRightStack;
 innerPanel.WrapsChildren = true;
 
 for(int i= 0; i < 100; i++)
@@ -86,10 +93,41 @@ for(int i= 0; i < 100; i++)
     var button = new Button();
     button.Width = 70;
     button.Text = $"Btn {i}";
-    button.Anchor(Anchor.TopLeft);
+    button.Anchor(Gum.Wireframe.Anchor.TopLeft);
     scrollViewer.AddChild(button);
 }
 ```
 
+[Try on XnaFiddle.NET](https://xnafiddle.net/#snippet=H4sIAAAAAAAAA31RwWrCQBD9lSX0EKGEVQ8FxYPJoQgWSg31kss2mZihcVY2k9o2-O_dTdSaFJrDwsx78-bNS-Otqsd6783Y1HDvISGjKvEbvJn3oYyoUqPL8hXhCEYsBMFRbG5a_mie0C0n2GLGhWVOx3IILbMs1i9a89-pJaWFNr51YgUM5Ebt4dwMIiAG40acISQC86wISrukp7G6Ipb6SwuiAsvMAK3Vl67ZTrktT4rUDkw1QIM15GxN4q7gDav0vS-1NepQXSaskgvNMnJrHYkFLoScCxRJLeU0EmPpKldMwu4dJdQkJOznTnmrmTWdUw3bok3G4R12TfNB9vsxfLpL7lrZScgkGjx1RZ_4X7CxPrhzLyuH_6q90-90HOfknX4A80bhzy4CAAA)
+
 <figure><img src="../../../.gitbook/assets/11_07 54 07.png" alt=""><figcaption><p>ScrollViewer with wrapped children</p></figcaption></figure>
 
+## Code Example: Filling Available Space
+
+The following code creates a ScrollViewer that fills the entire screen using `RelativeToParent` sizing. The code also subscribes to `Window.ClientSizeChanged` to update the Gum canvas and layout when the window is resized. For more information on handling resizes, see the [Resolution and Resizing the Game Window](../../layout/resizing-the-game-window.md) page.
+
+```csharp
+// Initialize
+Window.AllowUserResizing = true;
+Window.ClientSizeChanged += (_, _) =>
+{
+    GumUI.CanvasWidth = GraphicsDevice.Viewport.Width;
+    GumUI.CanvasHeight = GraphicsDevice.Viewport.Height;
+    GumUI.Root.UpdateLayout();
+};
+
+var scrollViewer = new ScrollViewer();
+scrollViewer.AddToRoot();
+scrollViewer.Visual.WidthUnits = Gum.DataTypes.DimensionUnitType.RelativeToParent;
+scrollViewer.Width = 0;
+scrollViewer.Visual.HeightUnits = Gum.DataTypes.DimensionUnitType.RelativeToParent;
+scrollViewer.Height = 0;
+
+for (int i = 0; i < 30; i++)
+{
+    var button = new Button();
+    scrollViewer.AddChild(button);
+    button.Text = "Button " + i;
+}
+```
+[Try on XnaFiddle.NET](https://xnafiddle.net/#snippet=H4sIAAAAAAACA61Rz2vCMBS--1c8eqpUgrDbnANXwQk7DK16KUhm3-yDmJQktVPxf1_SqjhlO61Q0ny_Xvrl0AIIxmZUboJHsLrEjgdIkiUuaI8ODRYkM1WxgRCqmhnUEzS0J7mGfu3opfKkiAWhtFNni3Mu15hB1Idw2YFlG_rPqTykEtzjhs3GLOZyy82CMpu7oJHmRU4rM8QtrZDNCatCactqvnfve0Va5_YPYyP44ZwoZdmsyLjFN75TpQ3bjj-6N3WRGsxKKyF8AmqXLLGC6RVUq681bJBlifKp99ScTMlFc_yZa9P4o5YbNuSWJ7sCDRvSBqUhJT3tITZBwS1tMVHvXLsibzPPXXV_Gdb88n9NuzTcrQv6VBpCkhaohtzyBA9-jaL25WZ9ix-ltUqe-nupN3U9nr9tL85JZGHjOGuaHUvwyw9PgybCfUAE5O8raB1b359-Fhi3AgAA)

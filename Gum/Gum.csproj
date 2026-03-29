@@ -87,6 +87,7 @@
 		<ProjectReference Include="CommonFormsAndControls\CommonFormsAndControls.csproj" />
 		<ProjectReference Include="CsvLibrary\CsvLibrary.csproj" />
 		<ProjectReference Include="..\GumCommon\GumCommon.csproj" />
+		<ProjectReference Include="..\Tools\Gum.ProjectServices\Gum.ProjectServices.csproj" />
 		<ProjectReference Include="..\InputLibrary\InputLibrary.csproj" />
 		<ProjectReference Include="..\WpfDataUi\WpfDataUi.csproj" />
 	</ItemGroup>
@@ -238,11 +239,10 @@
 		<Content Include="GumLogo64Light.png">
 		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</Content>
-		<EmbeddedResource Include="Content\BmfcTemplate.bmfc">
+		<Content Include="Content\BmfcTemplate.bmfc">
 		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		</EmbeddedResource>
+		</Content>
 		<EmbeddedResource Include="Content\Cursors\AddCursor.cur" />
-		<EmbeddedResource Include="Libraries\bmfont.exe" />
 		<None Update="Content\Icons\HeightUnits\Ratio.png">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
@@ -396,6 +396,7 @@
 		<Compile Remove="EventOutputPlugin\**" />
 		<Compile Remove="GumFigmaIconRipper\**" />
 		<Compile Remove="GumFormsPlugin\**" />
+		<Compile Remove="ImportFromGumxPlugin\**" />
 		<Compile Remove="objNetFramework\**" />
 		<Compile Remove="PerformanceMeasurementPlugin\**" />
 		<Compile Remove="StateAnimationPlugin\**" />
@@ -407,6 +408,7 @@
 		<EmbeddedResource Remove="EventOutputPlugin\**" />
 		<EmbeddedResource Remove="GumFigmaIconRipper\**" />
 		<EmbeddedResource Remove="GumFormsPlugin\**" />
+		<EmbeddedResource Remove="ImportFromGumxPlugin\**" />
 		<EmbeddedResource Remove="PerformanceMeasurementPlugin\**" />
 		<EmbeddedResource Remove="StateAnimationPlugin\**" />
 		<EmbeddedResource Remove="SvgPlugin\**" />
@@ -417,6 +419,7 @@
 		<None Remove="EventOutputPlugin\**" />
 		<None Remove="GumFigmaIconRipper\**" />
 		<None Remove="GumFormsPlugin\**" />
+		<None Remove="ImportFromGumxPlugin\**" />
 		<None Remove="PerformanceMeasurementPlugin\**" />
 		<None Remove="StateAnimationPlugin\**" />
 		<None Remove="SvgPlugin\**" />
@@ -427,6 +430,7 @@
 		<Page Remove="EventOutputPlugin\**" />
 		<Page Remove="GumFigmaIconRipper\**" />
 		<Page Remove="GumFormsPlugin\**" />
+		<Page Remove="ImportFromGumxPlugin\**" />
 		<Page Remove="PerformanceMeasurementPlugin\**" />
 		<Page Remove="StateAnimationPlugin\**" />
 		<Page Remove="SvgPlugin\**" />
@@ -442,6 +446,8 @@
 		<Compile Remove="Graphics\Animation\Content\AnimationChainListSave.cs" />
 		<Compile Remove="Graphics\Animation\Content\AnimationChainSave.cs" />
 		<Compile Remove="Graphics\Animation\Content\AnimationFrameSave.cs" />
+		<Compile Remove="Managers\CommonValidationError.cs" />
+		<Compile Remove="Managers\INameVerifier.cs" />
 		<Compile Remove="Managers\ObjectFinder.cs" />
 		<Compile Remove="Managers\StandardElementsManager.cs" />
 		<Compile Remove="Mvvm\ViewModel.cs" />
@@ -458,4 +464,13 @@
 		<None Remove="GumLogo64Light.png" />
 		<Page Remove="Plugins\InternalPlugins\AlignmentButtons\AlignmentControl.xaml" />
 	</ItemGroup>
+	<Target Name="CopyGumCli" AfterTargets="Build">
+		<MSBuild Projects="..\Tools\Gum.Cli\Gum.Cli.csproj" Targets="Build" Properties="Configuration=$(Configuration)" />
+		<ItemGroup>
+			<GumCliFiles Include="..\Tools\Gum.Cli\bin\$(Configuration)\net8.0\**\*.*" />
+		</ItemGroup>
+		<Copy SourceFiles="@(GumCliFiles)"
+			  DestinationFiles="@(GumCliFiles->'$(OutputPath)GumCli\%(RecursiveDir)%(Filename)%(Extension)')"
+			  SkipUnchangedFiles="true" />
+	</Target>
 </Project>

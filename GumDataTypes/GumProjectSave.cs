@@ -117,6 +117,14 @@ public class GumProjectSave
         // Default to false - it's too expensive for large character sets
         false;
 
+    /// <summary>
+    /// Which font generation backend to use for creating bitmap font files.
+    /// Defaults to <see cref="FontGeneratorType.BmFont"/> for backward compatibility.
+    /// </summary>
+    public FontGeneratorType FontGenerator { get; set; } = FontGeneratorType.BmFont;
+    /// <summary>Suppresses serialization when the value is the default (BmFont).</summary>
+    public bool ShouldSerializeFontGenerator() => FontGenerator != FontGeneratorType.BmFont;
+
     public int Version { get; set; }
 
     public int DefaultCanvasWidth
@@ -166,15 +174,18 @@ public class GumProjectSave
         set;
     }
 
-    public List<string> FavoriteComponents { get; set; }
+    public List<string> FavoriteComponents { get; set; } = new List<string>();
+    public bool ShouldSerializeFavoriteComponents() => FavoriteComponents.Count > 0;
 
     /// <summary>
     /// The folder of the root of the parent project if this Gum project is part of a larger project (like a game project or android app).
     /// This is a relative path like "../../"
     /// </summary>
-    public string ParentProjectRoot { get; set; }
+    public string ParentProjectRoot { get; set; } = string.Empty;
+    public bool ShouldSerializeParentProjectRoot() => !string.IsNullOrEmpty(ParentProjectRoot);
 
-    public string LocalizationFile { get; set; }
+    public string LocalizationFile { get; set; } = string.Empty;
+    public bool ShouldSerializeLocalizationFile() => !string.IsNullOrEmpty(LocalizationFile);
 
     public bool ShowLocalizationInGum { get; set; } = true;
 
@@ -201,21 +212,21 @@ public class GumProjectSave
     {
         get;
         set;
-    }
+    } = new List<ScreenSave>();
 
     [XmlIgnore]
     public List<ComponentSave> Components
     {
         get;
         set;
-    }
+    } = new List<ComponentSave>();
 
     [XmlIgnore]
     public List<StandardElementSave> StandardElements
     {
         get;
         set;
-    }
+    } = new List<StandardElementSave>();
 
     [XmlIgnore]
     public List<BehaviorSave> Behaviors
@@ -257,30 +268,31 @@ public class GumProjectSave
     {
         get;
         set;
-    }
+    } = new List<ElementReference>();
 
     [XmlElement("ComponentReference")]
     public List<ElementReference> ComponentReferences
     {
         get;
         set;
-    }
+    } = new List<ElementReference>();
 
     [XmlElement("StandardElementReference")]
     public List<ElementReference> StandardElementReferences
     {
         get;
         set;
-    }
+    } = new List<ElementReference>();
 
     [XmlElement("BehaviorReference")]
     public List<BehaviorReference> BehaviorReferences
     {
         get;
         set;
-    }
+    } = new List<BehaviorReference>();
 
-    public string SinglePixelTextureFile { get; set; }
+    public string SinglePixelTextureFile { get; set; } = string.Empty;
+    public bool ShouldSerializeSinglePixelTextureFile() => !string.IsNullOrEmpty(SinglePixelTextureFile);
 
     public int? SinglePixelTextureTop { get; set; }
     public int? SinglePixelTextureLeft { get; set; }
@@ -391,7 +403,7 @@ public class GumProjectSave
                 string streamContent = reader.ReadToEnd();
                 bool isCompact = IsGumxCompactFormat(streamContent);
                 var deserializer = isCompact
-                    ? VariableSaveSerializer.GetGumProjectCompactSerializer()
+                    ? GumFileSerializer.GetGumProjectCompactSerializer()
                     : FileManager.GetXmlSerializer(typeof(GumProjectSave));
                 gps = (GumProjectSave)deserializer.Deserialize(new StringReader(streamContent));
                 if (!isCompact && !streamContent.Contains("<Version>"))
@@ -412,7 +424,7 @@ public class GumProjectSave
                 string fileContent = File.ReadAllText(fileName);
                 bool isCompact = IsGumxCompactFormat(fileContent);
                 var deserializer = isCompact
-                    ? VariableSaveSerializer.GetGumProjectCompactSerializer()
+                    ? GumFileSerializer.GetGumProjectCompactSerializer()
                     : FileManager.GetXmlSerializer(typeof(GumProjectSave));
                 gps = (GumProjectSave)deserializer.Deserialize(new StringReader(fileContent));
                 if (!isCompact && !fileContent.Contains("<Version>"))
@@ -665,7 +677,7 @@ public class GumProjectSave
         }
     }
 
-    private static bool IsGumxCompactFormat(string content)
+    public static bool IsGumxCompactFormat(string content)
     {
         // v2 files store Name as an XML attribute, e.g. <ScreenReference Name="...">.
         // This matches ScreenReference, ComponentReference, StandardElementReference, and BehaviorReference.
@@ -677,7 +689,7 @@ public class GumProjectSave
     public void Save(string fileName, bool saveElements)
     {
         var projectSerializer = Version >= (int)GumxVersions.AttributeVersion
-            ? VariableSaveSerializer.GetGumProjectCompactSerializer()
+            ? GumFileSerializer.GetGumProjectCompactSerializer()
             : FileManager.GetXmlSerializer(typeof(GumProjectSave));
         FileManager.XmlSerialize(this, fileName, projectSerializer);
 

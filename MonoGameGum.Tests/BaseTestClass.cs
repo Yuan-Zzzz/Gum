@@ -16,6 +16,7 @@ public class BaseTestClass : IDisposable
 
     public BaseTestClass()
     {
+        GumService.Default.InitializeForTesting();
         CreateMockCursor();
     }
 
@@ -34,8 +35,10 @@ public class BaseTestClass : IDisposable
 
     public virtual void Dispose()
     {
+        GraphicalUiElement.IsAllLayoutSuspended = false;
         GraphicalUiElement.CanvasWidth = 800;
         GraphicalUiElement.CanvasHeight = 600;
+        GraphicalUiElement.GlobalFontScale = 1;
 
         FrameworkElement.KeyboardsForUiControl.Clear();
         FrameworkElement.ClickCombos.Clear();
@@ -69,7 +72,7 @@ public class BaseTestClass : IDisposable
         });
 
         // just to remove any mocks:
-        FrameworkElement.MainCursor = new Cursor();
+        FrameworkElement.MainCursor = new Cursor(null);
 
         InteractiveGue.CurrentInputReceiver = null;
         InteractiveGue.ClearNextClickActions();
@@ -85,7 +88,6 @@ public class BaseTestClass : IDisposable
 
         FileManager.CustomGetStreamFromFile = null;
 
-        GraphicalUiElement.GlobalFontScale = 1;
         RenderingLibrary.Graphics.Text.Customizations.Clear();
     }
 }

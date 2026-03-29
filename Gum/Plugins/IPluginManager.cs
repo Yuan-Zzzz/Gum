@@ -1,6 +1,7 @@
 ﻿using Gum.DataTypes;
 using Gum.DataTypes.Behaviors;
 using Gum.DataTypes.Variables;
+using Gum.Responses;
 using Gum.Gui.Windows;
 using Gum.Managers;
 using Gum.Plugins.BaseClasses;
@@ -42,13 +43,15 @@ public interface IPluginManager
 
     void ShowDeleteDialog(DeleteOptionsWindow window, Array objectsToDelete);
 
-    void DeleteConfirm(DeleteOptionsWindow window, Array objectsToDelete);
+    void DeleteConfirmed(DeleteOptionsWindow window, Array objectsToDelete);
 
     void ElementRename(ElementSave elementSave, string oldName);
 
     void ElementAdd(ElementSave element);
 
     void ElementDelete(ElementSave element);
+
+    void ElementImported(ElementSave element);
 
     void ElementDuplicate(ElementSave oldElement, ElementSave newElement);
 
@@ -69,6 +72,8 @@ public interface IPluginManager
     void CategoryRename(StateSaveCategory category, string oldName);
     void CategoryAdd(StateSaveCategory category);
     void CategoryDelete(StateSaveCategory category);
+    DeleteResponse GetDeleteStateCategoryResponse(StateSaveCategory stateSaveCategory, IStateContainer element);
+    DeleteResponse GetDeleteStateResponse(StateSave stateSave, IStateContainer element);
     void ReactToStateSaveCategorySelected(StateSaveCategory? category);
     void VariableAdd(ElementSave elementSave, string variableName);
     void VariableDelete(ElementSave elementSave, string variableName);
@@ -113,6 +118,8 @@ public interface IPluginManager
     void InstanceAdd(ElementSave elementSave, InstanceSave instance);
     void InstanceDelete(ElementSave elementSave, InstanceSave instance);
     void BehaviorInstanceAdd(BehaviorSave behavior, BehaviorInstanceSave instance);
+    void BehaviorInstanceDelete(BehaviorSave behavior, BehaviorInstanceSave instance);
+    void BehaviorInstanceRename(BehaviorSave behavior, BehaviorInstanceSave instance);
 
     void InstancesDelete(ElementSave elementSave, InstanceSave[] instances);
     StateSave? GetDefaultStateFor(string type);

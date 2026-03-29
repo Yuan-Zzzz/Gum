@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<TargetFramework>net8.0-windows</TargetFramework>
+		<GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+		<EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+		<EnableDefaultPageItems>false</EnableDefaultPageItems>
+		<LangVersion>12.0</LangVersion>
+		<AnalysisLevel>none</AnalysisLevel>
+		<Nullable>enable</Nullable>
+		<UseWPF>true</UseWPF>
+	</PropertyGroup>
+	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+		<DebugSymbols>true</DebugSymbols>
+		<DebugType>full</DebugType>
+		<Optimize>false</Optimize>
+		<OutputPath>bin\Debug\</OutputPath>
+		<DefineConstants>DEBUG;TRACE</DefineConstants>
+		<ErrorReport>prompt</ErrorReport>
+		<WarningLevel>4</WarningLevel>
+	</PropertyGroup>
+	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+		<DebugType>pdbonly</DebugType>
+		<Optimize>true</Optimize>
+		<OutputPath>bin\Release\</OutputPath>
+		<DefineConstants>TRACE</DefineConstants>
+		<ErrorReport>prompt</ErrorReport>
+		<WarningLevel>4</WarningLevel>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<Reference Include="System.ComponentModel.Composition" />
+	</ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<Compile Include="MainImportFromGumxPlugin.cs" />
+		<Compile Include="Properties\AssemblyInfo.cs" />
+		<Compile Include="Services\GumxDependencyResolver.cs" />
+		<Compile Include="Services\GumxImportService.cs" />
+		<Compile Include="ViewModels\ImportFromGumxViewModel.cs" />
+		<Compile Include="ViewModels\ImportPreviewItemViewModel.cs" />
+		<Compile Include="ViewModels\ImportTreeNodeViewModel.cs" />
+		<Compile Include="Views\ImportFromGumxView.xaml.cs" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<Page Include="Views\ImportFromGumxView.xaml">
+			<Generator>MSBuild:Compile</Generator>
+		</Page>
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\..\FlatRedBall.SpecializedXnaControls\FlatRedBall.SpecializedXnaControls.csproj">
+			<Project>{8c80ba7b-1cba-4579-9382-d9dc6c365070}</Project>
+			<Name>FlatRedBall.SpecializedXnaControls</Name>
+		</ProjectReference>
+		<ProjectReference Include="..\Gum.csproj">
+			<Project>{121ac5a5-8f6a-42b2-8863-debc45b052bc}</Project>
+			<Name>Gum</Name>
+		</ProjectReference>
+		<ProjectReference Include="..\..\InputLibrary\InputLibrary.csproj">
+			<Project>{938d9a00-8529-4ce8-9077-e0a3994a73ea}</Project>
+			<Name>InputLibrary</Name>
+		</ProjectReference>
+		<ProjectReference Include="..\..\WpfDataUi\WpfDataUi.csproj">
+			<Project>{47241002-7eb5-433b-b931-a530bb6b84ee}</Project>
+			<Name>WpfDataUi</Name>
+		</ProjectReference>
+		<ProjectReference Include="..\..\XnaAndWinforms\XnaAndWinforms.csproj">
+			<Project>{c39a973c-66d6-4a6c-82b5-ae0042f210f8}</Project>
+			<Name>XnaAndWinforms</Name>
+		</ProjectReference>
+	</ItemGroup>
+
+	<Target Name="PostBuild" AfterTargets="PostBuildEvent">
+		<Exec Command="echo Copying to &quot;$(SolutionDir)Gum\bin\$(ConfigurationName)\Plugins\$(TargetName)\&quot;&#xD;&#xA;IF NOT EXIST &quot;$(SolutionDir)Gum\bin\$(ConfigurationName)\Plugins\$(TargetName)&quot; md &quot;$(SolutionDir)Gum\bin\$(ConfigurationName)\Plugins\$(TargetName)\&quot;&#xD;&#xA;&#xD;&#xA;copy &quot;$(TargetPath)&quot; &quot;$(SolutionDir)Gum\bin\$(ConfigurationName)\Plugins\$(TargetName)&quot;&#xD;&#xA;&#xD;&#xA;copy &quot;$(TargetDir)$(TargetName).pdb&quot; &quot;$(SolutionDir)Gum\bin\$(ConfigurationName)\Plugins\$(TargetName)&quot;" />
+	</Target>
+</Project>

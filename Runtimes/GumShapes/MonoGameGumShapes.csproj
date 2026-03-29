@@ -8,7 +8,7 @@
 		<PackageId>Gum.Shapes.MonoGame</PackageId>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		
-		<Version>2026.2.23.1</Version>
+		<Version>2026.3.28.2</Version>
 		<NoWarn>1591</NoWarn>
 
 		<GenerateDocumentationFile>true</GenerateDocumentationFile>
@@ -20,8 +20,12 @@
 	<ItemGroup>
 	  <Compile Remove="bin\**" />
 	  <Compile Remove="obj\**" />
+	  <Compile Remove="XnbBuilder\**" />
+	  <Compile Remove="XnbTest\**" />
 	  <EmbeddedResource Remove="bin\**" />
 	  <EmbeddedResource Remove="obj\**" />
+	  <EmbeddedResource Remove="XnbBuilder\**" />
+	  <EmbeddedResource Remove="XnbTest\**" />
 	  <None Remove="bin\**" />
 	  <None Remove="obj\**" />
 	</ItemGroup>
@@ -31,7 +35,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<PackageReference Include="Apos.Shapes" Version="0.6.3-alpha" />
+		<PackageReference Include="Apos.Shapes" Version="0.6.8" />
 		<PackageReference Include="MonoGame.Framework.DesktopGL" Version="3.8.4.1" PrivateAssets="All" />
 	</ItemGroup>
 

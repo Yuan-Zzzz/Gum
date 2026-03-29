@@ -7,16 +7,19 @@ The CheckBox control provides the ability to display a true/false state and allo
 ## Code Example: Adding a CheckBox
 
 ```csharp
+// Initialize
 var checkBox = new CheckBox();
 checkBox.AddToRoot();
 checkBox.X = 50;
 checkBox.Y = 50;
 checkBox.Text = "Checkbox";
-checkBox.Checked += (_,_) => Debug.WriteLine($"IsChecked:{checkBox.IsChecked}");
-checkBox.Unchecked += (_, _) => Debug.WriteLine($"IsChecked:{checkBox.IsChecked}");
+checkBox.Checked += (_,_) => checkBox.Text = $"IsChecked:{checkBox.IsChecked}";
+checkBox.Unchecked += (_, _) => checkBox.Text = $"IsChecked:{checkBox.IsChecked}";
 ```
 
-<figure><img src="../../.gitbook/assets/13_08 55 15.gif" alt=""><figcaption><p>CheckBox responding to Checked and Unchecked events by printing output</p></figcaption></figure>
+[Try on XnaFiddle.NET](https://xnafiddle.net/#snippet=H4sIAAAAAAAAA6tW8ix2L81VsiopKk3VUcrMyyzJTMzJrEpVslIqSyxSSM5ITc52yq9QsFXISy1XcIZyNTStY_JgcnqOKSkh-UH5-SWowhFATaYGyCKRGCIhqRUlQMGYUgMDIyOw6Un5FRAesjKwTGoKRJ2TrYJGvE68poItiGvsqoBumgrEAM9iqDarargKuFgtpiWhECaqNQpUskepFgDci7UfawEAAA)
+
+<figure><img src="../../.gitbook/assets/13_21 40 32.gif" alt=""><figcaption><p>CheckBox responding to Checked and Unchecked events by printing output</p></figcaption></figure>
 
 ## CheckBox Width and Height
 
@@ -27,9 +30,13 @@ Default CheckBoxes have the following default values:
 The text within the CheckBox draws and wraps according to the bounds of the CheckBox. In other words, longer text results in line wrapping, as show in the following code block:
 
 ```csharp
+// Initialize
 var checkBox = new CheckBox();
+checkBox.Y = 24;
 checkBox.Text = "This is some longer text";
-stackPanel.AddChild(checkBox);
+checkBox.AddToRoot();
 ```
+
+[Try on XnaFiddle.NET](https://xnafiddle.net/#snippet=H4sIAAAAAAAAA6tW8ix2L81VsiopKk3VUcrMyyzJTMzJrEpVslIqSyxSSM5ITc52yq9QsFXISy1XcIZyNTStY_JgcnqRQFkjE2SRkNSKEqBgTKmBgZFRSEZmsQIQFefnpirk5OelpxYplAAVQGSRtTmmpITkB-XnlwDNV6oFAAAIwCycAAAA)
 
 <figure><img src="../../.gitbook/assets/13_08 56 16.png" alt=""><figcaption><p>ComboBox with wrapped text</p></figcaption></figure>

@@ -11,15 +11,12 @@ using Gum.ToolCommands;
 using Gum.ToolStates;
 using Gum.Undo;
 using Gum.Wireframe.Editors;
-using HarfBuzzSharp;
 using RenderingLibrary;
 using RenderingLibrary.Graphics;
 using RenderingLibrary.Math.Geometry;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.InteropServices;
-using System.Security.RightsManagement;
 using System.Windows.Forms;
 using System.Windows.Input;
 using Color = System.Drawing.Color;
@@ -38,26 +35,6 @@ public interface ISelectionManager
 
 public class SelectionManager : ISelectionManager
 {
-    #region GetFocusedControl interop implementation
-
-    [DllImport("user32.dll", CharSet = CharSet.Auto, CallingConvention = CallingConvention.Winapi)]
-    internal static extern IntPtr GetFocus();
-
-    private Control GetFocusedControl()
-    {
-        Control focusedControl = null;
-        // To get hold of the focused control:
-        IntPtr focusedHandle = GetFocus();
-        if (focusedHandle != IntPtr.Zero)
-            // Note that if the focused Control is not a .Net control, then this will return null.
-            focusedControl = Control.FromHandle(focusedHandle);
-        return focusedControl;
-    }
-
-
-
-    #endregion
-
     #region Fields
 
     LayerService _layerService;
@@ -73,7 +50,7 @@ public class SelectionManager : ISelectionManager
     private RectangleSelector? _rectangleSelector;
 
     List<GraphicalUiElement> mSelectedIpsos = new List<GraphicalUiElement>();
-    IPositionedSizedObject? mHighlightedIpso;
+    GraphicalUiElement? mHighlightedIpso;
 
     public event Action<IPositionedSizedObject?>? HighlightedIpsoChanged;
 
@@ -155,7 +132,7 @@ public class SelectionManager : ISelectionManager
         }
     }
 
-    public IPositionedSizedObject? HighlightedIpso
+    public GraphicalUiElement? HighlightedIpso
     {
         get
         {
@@ -168,12 +145,12 @@ public class SelectionManager : ISelectionManager
             {
                 if (mHighlightedIpso != null)
                 {
-                    highlightManager.UnhighlightIpso(mHighlightedIpso as GraphicalUiElement);
+                    highlightManager.UnhighlightIpso(mHighlightedIpso);
                 }
 
                 mHighlightedIpso = value;
 
-                mGraphicalOutline.HighlightedIpso = mHighlightedIpso as GraphicalUiElement;
+                mGraphicalOutline.HighlightedIpso = mHighlightedIpso;
 
                 HighlightedIpsoChanged?.Invoke(value);
             }
@@ -446,7 +423,7 @@ public class SelectionManager : ISelectionManager
             float worldXAt = Cursor.GetWorldX();
             float worldYAt = Cursor.GetWorldY();
 
-            IPositionedSizedObject representationOver = null;
+            GraphicalUiElement? representationOver = null;
 
             if (_editingManager.ContextMenu?.IsOpen == true)
             {
@@ -454,81 +431,61 @@ public class SelectionManager : ISelectionManager
             }
             else
             {
-                // Check rectangle selector cursor first (for shift+drag mode indication)
                 if (_rectangleSelector != null)
                 {
                     var rectangleCursor = _rectangleSelector.GetCursorToShow();
                     if (rectangleCursor != null)
-                    {
                         cursorToSet = rectangleCursor;
-                    }
                 }
 
-                if (WireframeEditor != null)
-                {
-                    cursorToSet = WireframeEditor.GetWindowsCursorToShow(cursorToSet, worldXAt, worldYAt);
-                }
-
-                #region Selecting element activity
-
+                // Cursor and IsOverBody are determined by which of four mutually exclusive
+                // states we're in: highlight suppressed, over a resize/rotation handle,
+                // dragging a body already grabbed, or hovering over the body.
                 if (forceNoHighlight)
                 {
                     IsOverBody = false;
+                    if (WireframeEditor != null)
+                        cursorToSet = WireframeEditor.GetWindowsCursorToShow(cursorToSet, worldXAt, worldYAt);
                 }
-
-                if (forceNoHighlight == false)
+                else if (WireframeEditor?.HasCursorOverHandles == true)
                 {
+                    representationOver = _wireframeObjectManager.GetSelectedRepresentation();
+                    IsOverBody = false;
+                    cursorToSet = WireframeEditor.GetWindowsCursorToShow(cursorToSet, worldXAt, worldYAt);
+                }
+                else if (IsOverBody && Cursor.PrimaryDown)
+                {
+                    representationOver = _wireframeObjectManager.GetSelectedRepresentation();
+                    var selectedIsLocked = _selectedState.SelectedInstance?.Locked == true;
+                    if (!selectedIsLocked && WireframeEditor != null)
+                        cursorToSet = WireframeEditor.GetWindowsCursorToShow(cursorToSet, worldXAt, worldYAt);
+                }
+                else
+                {
+                    var elementStack = new List<ElementWithState> { new ElementWithState(_selectedState.SelectedElement) };
+                    representationOver = GetRepresentationAt(worldXAt, worldYAt, IsComponentNoInstanceSelected, elementStack);
 
-                    if (WireframeEditor?.HasCursorOverHandles == true)
+                    if (representationOver != null)
                     {
-                        representationOver = _wireframeObjectManager.GetSelectedRepresentation();
-                        IsOverBody = false;
+                        var isRepresentationLocked = representationOver?.Tag is InstanceSave lockedInst && lockedInst.Locked;
+                        IsOverBody = !isRepresentationLocked;
+                        if (!isRepresentationLocked && WireframeEditor != null)
+                            cursorToSet = WireframeEditor.GetWindowsCursorToShow(cursorToSet, worldXAt, worldYAt);
                     }
                     else
                     {
-                        if (IsOverBody && Cursor.PrimaryDown)
-                        {
-                            var selectedIsLocked = _selectedState.SelectedInstance?.Locked == true;
-                            if (!selectedIsLocked)
-                            {
-                                cursorToSet = System.Windows.Forms.Cursors.SizeAll;
-                            }
-                            representationOver = _wireframeObjectManager.GetSelectedRepresentation();
-                        }
-                        else
-                        {
-                            List<ElementWithState> elementStack = new List<ElementWithState>();
-                            elementStack.Add(new ElementWithState(_selectedState.SelectedElement));
-
-                            representationOver =
-                                GetRepresentationAt(worldXAt, worldYAt, IsComponentNoInstanceSelected, elementStack);
-
-                            if (representationOver != null)
-                            {
-                                var isRepresentationLocked = (representationOver as GraphicalUiElement)?.Tag is InstanceSave lockedInst && lockedInst.Locked;
-                                if (!isRepresentationLocked)
-                                {
-                                    cursorToSet = System.Windows.Forms.Cursors.SizeAll;
-                                }
-                                IsOverBody = true;
-                            }
-                            else
-                            {
-                                IsOverBody = false;
-                            }
-                        }
+                        IsOverBody = false;
                     }
                 }
-                #endregion
             }
 
 
-            if (representationOver != null && representationOver is NineSlice)
+            if (representationOver != null && representationOver.RenderableComponent is NineSlice nineslice)
             {
                 // This function updates the sizes and texture coordinates of the 
                 // highlighted representation if it's a NineSlice.  This is needed before
                 // we set the HighlightedIpso and before we update the highlight objects
-                (representationOver as NineSlice).RefreshTextureCoordinatesAndSpriteSizes();
+                nineslice.RefreshTextureCoordinatesAndSpriteSizes();
             }
 
 
@@ -568,7 +525,7 @@ public class SelectionManager : ISelectionManager
 
     public GraphicalUiElement GetRepresentationAt(float x, float y, bool trySkipSelected, List<ElementWithState> elementStack)
     {
-        GraphicalUiElement ipsoOver = null;
+        GraphicalUiElement? ipsoOver = null;
 
         // First check if we're over the current
         var selectedRepresentations = _wireframeObjectManager.GetSelectedRepresentations();
@@ -665,8 +622,8 @@ public class SelectionManager : ISelectionManager
         // null, get the ElementSave
         if (ipsoOver != null)
         {
-            InstanceSave instance;
-            ElementSave element;
+            InstanceSave? instance;
+            ElementSave? element;
 
             GetElementOrInstanceForIpso(ipsoOver, elementStack, out instance, out element);
 
@@ -788,9 +745,22 @@ public class SelectionManager : ISelectionManager
     List<GraphicalUiElement> _emptyGraphicalUiElementList = new List<GraphicalUiElement>();
     private void UpdateEditorsToSelection()
     {
-        if (SelectedGues.Count == 1 &&
-            SelectedGue?.Tag is InstanceSave instanceSaveTag &&
-            ObjectFinder.Self.GetRootStandardElementSave(instanceSaveTag)?.Name == "Polygon")
+        var isPolygon = false;
+        if(SelectedGues.Count == 1)
+        {
+            if(SelectedGue?.Tag is InstanceSave instanceSaveTag)
+            {
+                isPolygon =
+                    ObjectFinder.Self.GetRootStandardElementSave(instanceSaveTag)?.Name == "Polygon";
+            }
+            else if(SelectedGue?.Tag is ComponentSave componentSave)
+            {
+                isPolygon =
+                    ObjectFinder.Self.GetRootStandardElementSave(componentSave)?.Name == "Polygon";
+            }
+        }
+
+        if (isPolygon)
         {
             // use the Polygon wireframe editor
             if (WireframeEditor is PolygonWireframeEditor == false)
@@ -806,7 +776,6 @@ public class SelectionManager : ISelectionManager
         {
             var tag = SelectedGue.Tag as ElementSave;
 
-            var isPolygon = false;
             if (ObjectFinder.Self.GetRootStandardElementSave(tag)?.Name == "Polygon")
             {
                 isPolygon = true;
@@ -1018,6 +987,22 @@ public class SelectionManager : ISelectionManager
                 {
                     _rectangleSelector.HandleRelease();
                 }
+            }
+        }
+
+        // Handle off-canvas drag/release while a rectangle selection is in progress.
+        // cursor.PrimaryDown and PrimaryClick both require IsInWindow, so neither fires
+        // once the cursor leaves the canvas. Detect that state here and either continue
+        // updating the rectangle bounds or finalise the selection.
+        if (_rectangleSelector?.IsActive == true && !cursor.IsInWindow)
+        {
+            if (cursor.PrimaryDownIgnoringIsInWindow)
+            {
+                _rectangleSelector.HandleDrag(isHandlerActive: false);
+            }
+            else
+            {
+                _rectangleSelector.HandleRelease();
             }
         }
     }
@@ -1249,8 +1234,8 @@ public class SelectionManager : ISelectionManager
 
                 if (representation != null)
                 {
-                    InstanceSave selectedInstance;
-                    ElementSave selectedElement;
+                    InstanceSave? selectedInstance;
+                    ElementSave? selectedElement;
                     GetElementOrInstanceForIpso(representation, elementStack, out selectedInstance, out selectedElement);
 
                     if (selectedInstance == null && selectedElement == null)
@@ -1333,7 +1318,7 @@ public class SelectionManager : ISelectionManager
     }
 
     private void GetElementOrInstanceForIpso(IRenderableIpso representation, List<ElementWithState> elementStack,
-                                                    out InstanceSave selectedInstance, out ElementSave selectedElement)
+                                                    out InstanceSave? selectedInstance, out ElementSave? selectedElement)
     {
         selectedInstance = null;
         selectedElement = null;
@@ -1347,13 +1332,13 @@ public class SelectionManager : ISelectionManager
 
         if (ipsoToUse != null)
         {
-            if (ipsoToUse.Tag is InstanceSave)
+            if (ipsoToUse.Tag is InstanceSave asInstanceSave)
             {
-                selectedInstance = ipsoToUse.Tag as InstanceSave;
+                selectedInstance = asInstanceSave;
             }
-            else if (ipsoToUse.Tag is ElementSave)
+            else if (ipsoToUse.Tag is ElementSave asElementSave)
             {
-                selectedElement = ipsoToUse.Tag as ElementSave;
+                selectedElement = asElementSave;
             }
             else
             {
@@ -1379,7 +1364,7 @@ public class SelectionManager : ISelectionManager
 
             foreach (var instance in _selectedState.SelectedInstances)
             {
-                GraphicalUiElement toAdd =
+                GraphicalUiElement? toAdd =
                     _wireframeObjectManager.GetRepresentation(instance, elementStack);
                 if (toAdd != null)
                 {
@@ -1389,7 +1374,7 @@ public class SelectionManager : ISelectionManager
         }
         else if (_selectedState.SelectedElement != null)
         {
-            GraphicalUiElement toAdd =
+            GraphicalUiElement? toAdd =
                 _wireframeObjectManager.GetRepresentation(_selectedState.SelectedElement);
 
             if (toAdd != null)

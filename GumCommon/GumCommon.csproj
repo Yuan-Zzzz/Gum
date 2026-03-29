@@ -11,7 +11,7 @@
 		<PackageId>FlatRedBall.GumCommon</PackageId>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 
-		<Version>2026.2.23.1</Version>
+		<Version>2026.3.28.2</Version>
 
 
 
@@ -37,14 +37,17 @@
 		<Compile Include="..\GumDataTypes\Behaviors\BehaviorReference.cs" Link="Behaviors\BehaviorReference.cs" />
 		<Compile Include="..\GumDataTypes\Behaviors\BehaviorSave.cs" Link="Behaviors\BehaviorSave.cs" />
 		<Compile Include="..\GumDataTypes\Behaviors\ElementBehaviorReference.cs" Link="Behaviors\ElementBehaviorReference.cs" />
+		<Compile Include="..\GumDataTypes\Behaviors\StandardFormsBehaviorNames.cs" Link="Behaviors\StandardFormsBehaviorNames.cs" />
 		<Compile Include="..\GumDataTypes\ComponentSave.cs" Link="DataTypes\ComponentSave.cs" />
 		<Compile Include="..\GumDataTypes\CustomPropertySave.cs" Link="DataTypes\CustomPropertySave.cs" />
 		<Compile Include="..\GumDataTypes\DimensionUnitType.cs" Link="DataTypes\DimensionUnitType.cs" />
+		<Compile Include="..\GumDataTypes\GumSyntaxVersionAttribute.cs" Link="DataTypes\GumSyntaxVersionAttribute.cs" />
 		<Compile Include="..\GumDataTypes\ElementReference.cs" Link="DataTypes\ElementReference.cs" />
-		<Compile Include="..\GumDataTypes\Serialization\VariableSaveSerializer.cs" Link="DataTypes\VariableSaveSerializer.cs" />
+		<Compile Include="..\GumDataTypes\Serialization\GumFileSerializer.cs" Link="DataTypes\GumFileSerializer.cs" />
 		<Compile Include="..\GumDataTypes\ElementSave.cs" Link="DataTypes\ElementSave.cs" />
 		<Compile Include="..\GumDataTypes\EventSave.cs" Link="DataTypes\EventSave.cs" />
 		<Compile Include="..\GumDataTypes\GuideRectangle.cs" Link="DataTypes\GuideRectangle.cs" />
+		<Compile Include="..\GumDataTypes\FontGeneratorType.cs" Link="DataTypes\FontGeneratorType.cs" />
 		<Compile Include="..\GumDataTypes\GumProjectSave.cs" Link="DataTypes\GumProjectSave.cs" />
 		<Compile Include="..\GumDataTypes\IInstanceContainer.cs" Link="DataTypes\IInstanceContainer.cs" />
 		<Compile Include="..\GumDataTypes\InstanceSave.cs" Link="DataTypes\InstanceSave.cs" />
@@ -72,10 +75,13 @@
 		<Compile Include="..\Gum\Graphics\Animation\Content\AnimationChainListSave.cs" Link="Animation\AnimationChainListSave.cs" />
 		<Compile Include="..\Gum\Graphics\Animation\Content\AnimationChainSave.cs" Link="Animation\AnimationChainSave.cs" />
 		<Compile Include="..\Gum\Graphics\Animation\Content\AnimationFrameSave.cs" Link="Animation\AnimationFrameSave.cs" />
+		<Compile Include="..\Gum\Managers\CommonValidationError.cs" Link="Managers\CommonValidationError.cs" />
+		<Compile Include="..\Gum\Managers\INameVerifier.cs" Link="Managers\INameVerifier.cs" />
 		<Compile Include="..\Gum\Managers\ObjectFinder.cs" Link="Managers\ObjectFinder.cs" />
 		<Compile Include="..\Gum\Mvvm\ViewModel.cs" Link="Mvvm\ViewModel.cs" />
 		<Compile Include="..\RenderingLibrary\Content\IContentLoader.cs" Link="Content\IContentLoader.cs" />
 		<Compile Include="..\RenderingLibrary\Graphics\Fonts\BmfcSave.cs" Link="Content\BmfcSave.cs" />
+		<Compile Include="..\RenderingLibrary\Graphics\Fonts\IRuntimeFontService.cs" Link="Content\IRuntimeFontService.cs" />
 		<Compile Include="..\RenderingLibrary\Graphics\Fonts\ParsedFontFile.cs" Link="RenderingLibrary\ParsedFontFile.cs" />
 		<Compile Include="..\RenderingLibrary\Graphics\IAnimatable.cs" Link="RenderingLibrary\IAnimatable.cs" />
 		<Compile Include="..\RenderingLibrary\Graphics\InvisibleRenderable.cs" Link="RenderingLibrary\InvisibleRenderable.cs" />
@@ -127,6 +133,7 @@
 			<Link>DataTypes\GumProjectSaveExtensionMethods.cs</Link>
 		</Compile>
 		<Compile Include="..\GumRuntime\GraphicalUiElement.cs" Link="GraphicalUiElement.cs" />
+		<Compile Include="..\GumRuntime\GraphicalUiElement.Binding.cs" Link="GraphicalUiElement.Binding.cs" />
 
 
 		<Compile Include="..\Gum\DataTypes\PluginSettingsSave.cs">

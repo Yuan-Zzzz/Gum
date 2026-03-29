@@ -120,7 +120,7 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
     {
         get
         {
-            var toReturn = currentDirtyState.ParentUpdateType;
+            var toReturn = currentDirtyState?.ParentUpdateType ?? ParentUpdateType.None;
 
             if(GetIfParentHasRatioChildren())
             {
@@ -188,6 +188,10 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
 
     protected ISystemManagers? mManagers;
 
+    // hack for FRB:
+    [Obsolete("Don't use this, it exists only for FRB")]
+    public void ClearManagers() => mManagers = null;
+
     int mTextureTop;
     int mTextureLeft;
     int mTextureWidth;
@@ -234,6 +238,12 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
     // the row or column index when anobject is sorted.
     // This is used by the stacking logic to properly sort objects
     public int StackedRowOrColumnIndex { get; set; } = -1;
+
+    // Cached index of this element within its parent's Children list.
+    // Set by UpdateChildren before each child's UpdateLayout call to avoid
+    // an O(n) IndexOf lookup in GetWhatToStackAfter. A value of -1 means
+    // unset; GetWhatToStackAfter will fall back to IndexOf in that case.
+    private int _cachedSiblingIndex = -1;
 
     // null by default, non-null if an object uses
     // stacked layout for its children.
@@ -1213,11 +1223,14 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
     /// Note that this does not return all objects contained in the element, only direct children. 
     /// </summary>
 
-    ObservableCollection<IRenderableIpso>? IRenderableIpso.Children
+    private static readonly ObservableCollection<IRenderableIpso> EmptyIpsoChildren =
+        new FrozenObservableCollection<IRenderableIpso>();
+
+    ObservableCollection<IRenderableIpso> IRenderableIpso.Children
     {
         get
         {
-            return mContainedObjectAsIpso?.Children;
+            return mContainedObjectAsIpso?.Children ?? EmptyIpsoChildren;
         }
     }
 
@@ -1555,6 +1568,13 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
     }
 
 #if !FRB
+    /// <summary>
+    /// The list of <see cref="AnimationRuntime"/> objects available on this element.
+    /// Animations are typically populated when loading a Gum project. Use
+    /// <see cref="PlayAnimation(AnimationRuntime)"/> or the extension methods
+    /// <c>PlayAnimation(int)</c> / <c>PlayAnimation(string)</c> to start playback,
+    /// or access <see cref="AnimationController"/> directly for full control.
+    /// </summary>
     public List<AnimationRuntime>? Animations { get; set; }
 
     /// <summary>
@@ -1564,9 +1584,16 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
     public AnimationController AnimationController { get; } = new();
 
     /// <summary>
-    /// Starts playing the specified AnimationRuntime.
+    /// Convenience wrapper for <see cref="AnimationController.Play(AnimationRuntime)"/>.
+    /// Starts playing the specified <see cref="AnimationRuntime"/> from the beginning.
+    /// <para>
+    /// Only one animation can play at a time. Calling this while an animation is already
+    /// playing will replace the current animation. To play multiple animations in sequence
+    /// or to access playback state and events (pause, resume, <see cref="AnimationController.OnCompleted"/>),
+    /// use <see cref="AnimationController"/> directly.
+    /// </para>
     /// </summary>
-    /// <param name="animation">the AnimationRuntime object</param>
+    /// <param name="animation">The AnimationRuntime object to play.</param>
     /// <exception cref="ArgumentNullException">Thrown when animation is null.</exception>
     public void PlayAnimation(AnimationRuntime animation)
     {
@@ -1575,7 +1602,10 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
 
 
     /// <summary>
-    /// Stops the currently playing animation.
+    /// Convenience wrapper for <see cref="AnimationController.Stop()"/>.
+    /// Stops the currently playing animation and resets the playback time to zero.
+    /// <see cref="AnimationController"/> plays one animation at a time, so this stops
+    /// whichever animation is currently active.
     /// </summary>
     public void StopAnimation()
     {
@@ -1608,8 +1638,8 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
         public IRenderableIpso? NewValue { get; set; }
     };
 
-    public event PropertyChangedEventHandler PropertyChanged;
-    protected virtual void NotifyPropertyChanged([System.Runtime.CompilerServices.CallerMemberName] string propertyName = null)
+    public event PropertyChangedEventHandler? PropertyChanged;
+    protected virtual void NotifyPropertyChanged([System.Runtime.CompilerServices.CallerMemberName] string propertyName = null!)
     {
         if (PropertyChanged != null)
         {
@@ -1624,8 +1654,8 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
     public static Action<IRenderableIpso, ISystemManagers, Layer>? AddRenderableToManagers;
     public static Action<string, GraphicalUiElement>? ApplyMarkup;
 
-    public static Action<IRenderableIpso, GraphicalUiElement, string, object> SetPropertyOnRenderable =
-        // This is the default fallback to make Gum work. Specific rendering libraries can change this to provide 
+    public static Action<IRenderableIpso, GraphicalUiElement, string, object?> SetPropertyOnRenderable =
+        // This is the default fallback to make Gum work. Specific rendering libraries can change this to provide
         // better performance.
         SetPropertyThroughReflection;
 
@@ -1645,7 +1675,7 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
         mIsLayoutSuspended = false;
     }
 
-    public GraphicalUiElement(IRenderable containedObject, GraphicalUiElement whatContainsThis = null)
+    public GraphicalUiElement(IRenderable containedObject, GraphicalUiElement? whatContainsThis = null)
     {
         mIsLayoutSuspended = true;
         Width = 32;
@@ -1968,18 +1998,21 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
             var widthDependencyType = this.WidthUnits.GetDependencyType();
             var heightDependencyType = this.HeightUnits.GetDependencyType();
 
-            var hasChildDependency = widthDependencyType == HierarchyDependencyType.DependsOnChildren ||
-                heightDependencyType == HierarchyDependencyType.DependsOnChildren;
+            var widthDependsOnChildren = widthDependencyType == HierarchyDependencyType.DependsOnChildren ||
+                this.WidthUnits == DimensionUnitType.RelativeToMaxParentOrChildren;
+            var heightDependsOnChildren = heightDependencyType == HierarchyDependencyType.DependsOnChildren ||
+                this.HeightUnits == DimensionUnitType.RelativeToMaxParentOrChildren;
+            var hasChildDependency = widthDependsOnChildren || heightDependsOnChildren;
 
-            if (widthDependencyType != HierarchyDependencyType.DependsOnChildren && heightDependencyType != HierarchyDependencyType.DependsOnChildren)
+            if (!widthDependsOnChildren && !heightDependsOnChildren)
             {
                 UpdateDimensions(parentWidth, parentHeight, null, true);
             }
-            else if (widthDependencyType != HierarchyDependencyType.DependsOnChildren)
+            else if (!widthDependsOnChildren)
             {
                 UpdateDimensions(parentWidth, parentHeight, XOrY.X, considerWrappedStacked: false);
             }
-            if (heightDependencyType != HierarchyDependencyType.DependsOnChildren)
+            if (!heightDependsOnChildren)
             {
                 UpdateDimensions(parentWidth, parentHeight, XOrY.Y, considerWrappedStacked: false);
             }
@@ -2024,11 +2057,11 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
             // This will update according to all absolute children
             // Now that the children have been updated, we can do any dimensions that still need updating based on the children changes:
 
-            if (widthDependencyType == HierarchyDependencyType.DependsOnChildren)
+            if (widthDependsOnChildren)
             {
                 UpdateDimensions(parentWidth, parentHeight, XOrY.X, considerWrappedStacked: false);
             }
-            if (heightDependencyType == HierarchyDependencyType.DependsOnChildren)
+            if (heightDependsOnChildren)
             {
                 UpdateDimensions(parentWidth, parentHeight, XOrY.Y, considerWrappedStacked: false);
             }
@@ -2037,8 +2070,7 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
             {
                 // Now we can update all children that are wrapped:
                 UpdateChildren(childrenUpdateDepth, ChildType.StackedWrapped, skipIgnoreByParentSize: false);
-                if (this.WidthUnits.GetDependencyType() == HierarchyDependencyType.DependsOnChildren ||
-                    this.HeightUnits.GetDependencyType() == HierarchyDependencyType.DependsOnChildren)
+                if (widthDependsOnChildren || heightDependsOnChildren)
                 {
                     UpdateDimensions(parentWidth, parentHeight, xOrY, considerWrappedStacked: true);
                 }
@@ -2110,7 +2142,9 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
             UpdateChildren(childrenUpdateDepth, ChildType.All, skipIgnoreByParentSize: false, alreadyUpdated: fullyUpdatedChildren);
 
             var sizeDependsOnChildren = this.WidthUnits == DimensionUnitType.RelativeToChildren ||
-                this.HeightUnits == DimensionUnitType.RelativeToChildren;
+                this.WidthUnits == DimensionUnitType.RelativeToMaxParentOrChildren ||
+                this.HeightUnits == DimensionUnitType.RelativeToChildren ||
+                this.HeightUnits == DimensionUnitType.RelativeToMaxParentOrChildren;
 
             var canOneDimensionChangeOtherDimension = false;
 
@@ -2289,6 +2323,9 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
                     {
                         if (mContainedObjectAsIpso is IText asText)
                         {
+                            // Note: UpdateWidth's equivalent text path wraps WrappedTextWidth in a
+                            // try/catch for BadImageFormatException (Skia platform bug). If a similar
+                            // crash is ever observed here for WrappedTextHeight, add the same handling.
                             var oldWidth = mContainedObjectAsIpso.Width;
                             if (WidthUnits == DimensionUnitType.RelativeToChildren)
                             {
@@ -2519,7 +2556,8 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
                                         gue.HeightUnits == DimensionUnitType.PercentageOfOtherDimension ||
                                         gue.HeightUnits == DimensionUnitType.PercentageOfSourceFile ||
                                         gue.HeightUnits == DimensionUnitType.MaintainFileAspectRatio ||
-                                        gue.HeightUnits == DimensionUnitType.ScreenPixel)
+                                        gue.HeightUnits == DimensionUnitType.ScreenPixel ||
+                                        gue.HeightUnits == DimensionUnitType.RelativeToMaxParentOrChildren)
                                     {
                                         var childAbsoluteWidth = gue.GetAbsoluteHeight();
                                         heightToSplit -= childAbsoluteWidth;
@@ -2559,6 +2597,26 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
                 }
                 break;
                 #endregion
+
+            #region RelativeToMaxParentOrChildren
+
+            case DimensionUnitType.RelativeToMaxParentOrChildren:
+                {
+                    float parentBasedSize = parentHeight;
+
+                    float childrenBasedSize = 0;
+                    if (this.mContainedObjectAsIpso != null)
+                    {
+                        childrenBasedSize = GetMaxCellHeight(considerWrappedStacked, childrenBasedSize);
+                    }
+                    // mHeight acts as padding on children, matching RelativeToChildren behavior
+                    childrenBasedSize += mHeight;
+
+                    pixelHeightToSet = System.Math.Max(parentBasedSize, childrenBasedSize);
+                }
+                break;
+
+            #endregion
         }
 
 
@@ -2585,6 +2643,18 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
             if (considerChild && element.Visible)
             {
                 var elementHeight = element.GetRequiredParentHeight();
+
+                // If the child uses RelativeToMaxParentOrChildren, its absolute height
+                // includes max(parentHeight, childrenHeight). Using that here creates a
+                // circular dependency where stale parent values ratchet upward. Instead,
+                // use only the children-based size. Position offsets on the child are
+                // intentionally not considered — RelativeToMaxParentOrChildren is designed
+                // for siblings that fill their parent, not for positioned children.
+                if (element.HeightUnits == DimensionUnitType.RelativeToMaxParentOrChildren &&
+                    element.mContainedObjectAsIpso != null)
+                {
+                    elementHeight = element.GetMaxCellHeight(considerWrappedStacked, 0) + element.mHeight;
+                }
 
                 if (this.ChildrenLayout == ChildrenLayout.TopToBottomStack)
                 {
@@ -2908,7 +2978,8 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
                                         gue.WidthUnits == DimensionUnitType.PercentageOfOtherDimension ||
                                         gue.WidthUnits == DimensionUnitType.PercentageOfSourceFile ||
                                         gue.WidthUnits == DimensionUnitType.MaintainFileAspectRatio ||
-                                        gue.WidthUnits == DimensionUnitType.ScreenPixel)
+                                        gue.WidthUnits == DimensionUnitType.ScreenPixel ||
+                                        gue.WidthUnits == DimensionUnitType.RelativeToMaxParentOrChildren)
                                     {
                                         var childAbsoluteWidth = gue.GetAbsoluteWidth();
                                         widthToSplit -= childAbsoluteWidth;
@@ -2950,6 +3021,26 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
                 }
                 break;
                 #endregion
+
+            #region RelativeToMaxParentOrChildren
+
+            case DimensionUnitType.RelativeToMaxParentOrChildren:
+                {
+                    float parentBasedSize = parentWidth;
+
+                    float childrenBasedSize = 0;
+                    if (this.mContainedObjectAsIpso != null)
+                    {
+                        childrenBasedSize = GetMaxCellWidth(considerWrappedStacked, childrenBasedSize);
+                    }
+                    // mWidth acts as padding on children, matching RelativeToChildren behavior
+                    childrenBasedSize += mWidth;
+
+                    pixelWidthToSet = System.Math.Max(parentBasedSize, childrenBasedSize);
+                }
+                break;
+
+            #endregion
         }
 
 
@@ -2979,6 +3070,18 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
             if (considerChild && element.Visible)
             {
                 var elementWidth = element.GetRequiredParentWidth();
+
+                // If the child uses RelativeToMaxParentOrChildren, its absolute width
+                // includes max(parentWidth, childrenWidth). Using that here creates a
+                // circular dependency where stale parent values ratchet upward. Instead,
+                // use only the children-based size. Position offsets on the child are
+                // intentionally not considered — RelativeToMaxParentOrChildren is designed
+                // for siblings that fill their parent, not for positioned children.
+                if (element.WidthUnits == DimensionUnitType.RelativeToMaxParentOrChildren &&
+                    element.mContainedObjectAsIpso != null)
+                {
+                    elementWidth = element.GetMaxCellWidth(considerWrappedStacked, 0) + element.mWidth;
+                }
 
                 if (this.ChildrenLayout == ChildrenLayout.LeftToRightStack)
                 {
@@ -3303,7 +3406,9 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
         bool isScreen = ElementSave != null && ElementSave is ScreenSave;
         return !isScreen &&
             (this.WidthUnits.GetDependencyType() == HierarchyDependencyType.DependsOnChildren ||
-            this.HeightUnits.GetDependencyType() == HierarchyDependencyType.DependsOnChildren);
+            this.WidthUnits == DimensionUnitType.RelativeToMaxParentOrChildren ||
+            this.HeightUnits.GetDependencyType() == HierarchyDependencyType.DependsOnChildren ||
+            this.HeightUnits == DimensionUnitType.RelativeToMaxParentOrChildren);
     }
 
     #endregion
@@ -3354,14 +3459,22 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
         if (xOrY == XOrY.X)
         {
             var widthUnitDependencyType = mWidthUnit.GetDependencyType();
-            isAbsolute = (widthUnitDependencyType != HierarchyDependencyType.DependsOnParent || this.WidthUnits.GetDependencyType() == HierarchyDependencyType.NoDependency) &&
+            // RelativeToMaxParentOrChildren can compute a meaningful children-based size
+            // without the parent, so treat it as Absolute for parent sizing purposes.
+            var isNotParentDependent = widthUnitDependencyType != HierarchyDependencyType.DependsOnParent ||
+                this.WidthUnits.GetDependencyType() == HierarchyDependencyType.NoDependency ||
+                mWidthUnit == DimensionUnitType.RelativeToMaxParentOrChildren;
+            isAbsolute = isNotParentDependent &&
                 (mXUnits == GeneralUnitType.PixelsFromLarge || mXUnits == GeneralUnitType.PixelsFromMiddle ||
                     mXUnits == GeneralUnitType.PixelsFromSmall || mXUnits == GeneralUnitType.PixelsFromMiddleInverted);
 
         }
         else // Y
         {
-            isAbsolute = (mHeightUnit.GetDependencyType() != HierarchyDependencyType.DependsOnParent || this.HeightUnits.GetDependencyType() == HierarchyDependencyType.NoDependency) &&
+            var isNotParentDependent = mHeightUnit.GetDependencyType() != HierarchyDependencyType.DependsOnParent ||
+                this.HeightUnits.GetDependencyType() == HierarchyDependencyType.NoDependency ||
+                mHeightUnit == DimensionUnitType.RelativeToMaxParentOrChildren;
+            isAbsolute = isNotParentDependent &&
                 (mYUnits == GeneralUnitType.PixelsFromLarge || mYUnits == GeneralUnitType.PixelsFromMiddle ||
                     mYUnits == GeneralUnitType.PixelsFromSmall || mYUnits == GeneralUnitType.PixelsFromMiddleInverted &&
                     mYUnits == GeneralUnitType.PixelsFromBaseline);
@@ -3385,7 +3498,8 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
         unitType == DimensionUnitType.PercentageOfOtherDimension ||
         unitType == DimensionUnitType.PercentageOfSourceFile ||
         unitType == DimensionUnitType.MaintainFileAspectRatio ||
-        unitType == DimensionUnitType.ScreenPixel;
+        unitType == DimensionUnitType.ScreenPixel ||
+        unitType == DimensionUnitType.RelativeToMaxParentOrChildren;
 
     private void UpdateChildren(int childrenUpdateDepth, ChildType childrenUpdateType, bool skipIgnoreByParentSize, HashSet<GraphicalUiElement>? alreadyUpdated = null, HashSet<GraphicalUiElement>? newlyUpdated = null)
     {
@@ -3408,6 +3522,7 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
             for (int i = 0; i < mWhatThisContains.Count; i++)
             {
                 var child = mWhatThisContains[i];
+                child._cachedSiblingIndex = i;
                 // Victor Chelaru
                 // January 10, 2017
                 // I think we may not want to update any children which
@@ -3508,6 +3623,7 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
             for (int i = 0; i < this.Children.Count; i++)
             {
                 var child = this.Children[i];
+                child._cachedSiblingIndex = i;
 
                 if ((alreadyUpdated == null || alreadyUpdated.Contains(child) == false))
                 {
@@ -3589,17 +3705,17 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
             {
                 if (this.EffectiveParentGue?.ChildrenLayout == ChildrenLayout.LeftToRightStack)
                 {
-                    System.Collections.IList siblings = null;
+                    System.Collections.IList? siblings = null;
 
                     if (this.Parent == null)
                     {
-                        siblings = this.ElementGueContainingThis.mWhatThisContains;
+                        siblings = this.ElementGueContainingThis!.mWhatThisContains;
                     }
                     else if (this.Parent is GraphicalUiElement)
                     {
                         siblings = ((GraphicalUiElement)Parent).Children as System.Collections.IList;
                     }
-                    var thisIndex = siblings.IndexOf(this);
+                    var thisIndex = siblings?.IndexOf(this);
                     if (thisIndex > 0)
                     {
                         forcePixelsFromSmall = true;
@@ -3903,13 +4019,13 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
         // See if we're explicitly updating only Y. If so, skip setting X.
         if (xOrY != XOrY.Y)
         {
-            this.mContainedObjectAsIpso.X = unitOffsetX;
+            this.mContainedObjectAsIpso!.X = unitOffsetX;
         }
 
         // See if we're explicitly updating only X. If so, skip setting Y.
         if (xOrY != XOrY.X)
         {
-            this.mContainedObjectAsIpso.Y = unitOffsetY;
+            this.mContainedObjectAsIpso!.Y = unitOffsetY;
         }
     }
 
@@ -4101,6 +4217,11 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
 
         var parentGue = EffectiveParentGue;
 
+        if (parentGue == null)
+        {
+            return;
+        }
+
         if (this.Visible)
         {
 
@@ -4113,37 +4234,53 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
             {
                 parentGue.StackedRowOrColumnDimensions.Add(0);
             }
+
+            float myDimension;
+            if (parentGue.ChildrenLayout == ChildrenLayout.LeftToRightStack)
+            {
+                myDimension = this.Y + this.GetAbsoluteHeight();
+            }
             else
             {
-                if (indexToUpdate >= 0 && indexToUpdate < parentGue.StackedRowOrColumnDimensions.Count)
-                {
-                    parentGue.StackedRowOrColumnDimensions[indexToUpdate] = 0;
-                }
+                myDimension = this.X + this.GetAbsoluteWidth();
             }
-            foreach (GraphicalUiElement child in parentGue.Children)
-            {
-                if (child.Visible)
-                {
-                    if (child.StackedRowOrColumnIndex == indexToUpdate)
-                    {
-                        if (parentGue.ChildrenLayout == ChildrenLayout.LeftToRightStack)
-                        {
-                            parentGue.StackedRowOrColumnDimensions[indexToUpdate] =
-                                System.Math.Max(parentGue.StackedRowOrColumnDimensions[indexToUpdate],
-                                child.Y + child.GetAbsoluteHeight());
-                        }
-                        else
-                        {
-                            parentGue.StackedRowOrColumnDimensions[indexToUpdate] =
-                                System.Math.Max(parentGue.StackedRowOrColumnDimensions[indexToUpdate],
-                                child.X + child.GetAbsoluteWidth());
-                        }
 
-                        // We don't need to worry about the children after this, because the siblings will get updated in order:
-                        // This can (on average) make this run 2x as fast
-                        if (this == child)
+            float currentMax = parentGue.StackedRowOrColumnDimensions[indexToUpdate];
+
+            if (myDimension >= currentMax)
+            {
+                // This child is the new max (or equal), no need to scan siblings
+                parentGue.StackedRowOrColumnDimensions[indexToUpdate] = myDimension;
+            }
+            else
+            {
+                // This child's dimension is less than the stored max. It may have been
+                // the previous max-holder and shrunk, so we must rescan all siblings
+                // in this row/column up to and including this child to find the true max.
+                parentGue.StackedRowOrColumnDimensions[indexToUpdate] = 0;
+                foreach (GraphicalUiElement child in parentGue.Children)
+                {
+                    if (child.Visible)
+                    {
+                        if (child.StackedRowOrColumnIndex == indexToUpdate)
                         {
-                            break;
+                            if (parentGue.ChildrenLayout == ChildrenLayout.LeftToRightStack)
+                            {
+                                parentGue.StackedRowOrColumnDimensions[indexToUpdate] =
+                                    System.Math.Max(parentGue.StackedRowOrColumnDimensions[indexToUpdate],
+                                    child.Y + child.GetAbsoluteHeight());
+                            }
+                            else
+                            {
+                                parentGue.StackedRowOrColumnDimensions[indexToUpdate] =
+                                    System.Math.Max(parentGue.StackedRowOrColumnDimensions[indexToUpdate],
+                                    child.X + child.GetAbsoluteWidth());
+                            }
+
+                            if (this == child)
+                            {
+                                break;
+                            }
                         }
                     }
                 }
@@ -4421,7 +4558,14 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
         }
         /////////////////////////////End Early Out/////////////////////////////////
 
-        thisIndex = siblings.IndexOf(this);
+        if (_cachedSiblingIndex >= 0 && _cachedSiblingIndex < siblings.Count && siblings[_cachedSiblingIndex] == this)
+        {
+            thisIndex = _cachedSiblingIndex;
+        }
+        else
+        {
+            thisIndex = siblings.IndexOf(this);
+        }
 
 
         if (parentGue.StackedRowOrColumnDimensions == null)
@@ -5142,7 +5286,7 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
 
     public bool IsFullyCreated { get; private set; }
     /// <summary>
-    /// Method which is called after a control is fully created when it is created from a FrameworkElement 
+    /// Method which is called after a control is fully created when it is created from a FrameworkElement
     /// when ToGraphicalUiElement or SetGraphicalUiElement are called. 
     /// </summary>
     public virtual void AfterFullCreation()
@@ -5542,7 +5686,7 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
 
     partial void CustomRemoveFromManagers();
 
-    public void MoveToLayer(Layer layer)
+    public void MoveToLayer(Layer? layer)
     {
         var layerToRemoveFrom = mLayer;
         if (mLayer == null && mManagers != null)
@@ -5553,17 +5697,21 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
         var layerToAddTo = layer;
         if (layerToAddTo == null)
         {
-            layerToAddTo = mManagers.Renderer.Layers[0];
+            layerToAddTo = mManagers?.Renderer.Layers[0];
         }
 
-        bool isScreen = mContainedObjectAsIpso == null;
-        if (!isScreen)
+        bool hasContainedObject = mContainedObjectAsIpso == null;
+        if (hasContainedObject)
         {
+            if(layerToAddTo == null)
+            {
+                throw new InvalidOperationException($"Cannot move {this} to a different layer because it is not currently on a layer and no layer was provided");
+            }
             if (layerToRemoveFrom != null)
             {
-                layerToRemoveFrom.Remove(mContainedObjectAsIpso);
+                layerToRemoveFrom.Remove(mContainedObjectAsIpso!);
             }
-            layerToAddTo.Add(mContainedObjectAsIpso);
+            layerToAddTo.Add(mContainedObjectAsIpso!);
         }
         else
         {
@@ -5594,7 +5742,7 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
         // if mManagers is null, then it was never added to the managers
         if (mManagers != null)
         {
-            RemoveRenderableFromManagers?.Invoke(mContainedObjectAsIpso, mManagers);
+            RemoveRenderableFromManagers?.Invoke(mContainedObjectAsIpso!, mManagers);
 
             CustomRemoveFromManagers();
 
@@ -5688,7 +5836,7 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
     // This is made public so that specific implementations can fall back to it if needed:
     public static void SetPropertyThroughReflection(IRenderableIpso mContainedObjectAsIpso, GraphicalUiElement graphicalUiElement, string propertyName, object value)
     {
-        System.Reflection.PropertyInfo propertyInfo = mContainedObjectAsIpso.GetType().GetProperty(propertyName);
+        System.Reflection.PropertyInfo? propertyInfo = mContainedObjectAsIpso.GetType().GetProperty(propertyName);
 
         if (propertyInfo != null && propertyInfo.CanWrite)
         {
@@ -5716,7 +5864,7 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
             string underlyingProperty = mExposedVariables[propertyName];
             int indexOfDot = underlyingProperty.IndexOf('.');
             string instanceName = underlyingProperty.Substring(0, indexOfDot);
-            GraphicalUiElement containedGue = GetGraphicalUiElementByName(instanceName);
+            GraphicalUiElement? containedGue = GetGraphicalUiElementByName(instanceName);
             string variable = underlyingProperty.Substring(indexOfDot + 1);
 
             // Children may not have been created yet
@@ -5729,7 +5877,7 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
         {
             int indexOfDot = propertyName.IndexOf('.');
             string instanceName = propertyName.Substring(0, indexOfDot);
-            GraphicalUiElement containedGue = GetGraphicalUiElementByName(instanceName);
+            GraphicalUiElement? containedGue = GetGraphicalUiElementByName(instanceName);
             string variable = propertyName.Substring(indexOfDot + 1);
 
             // instances may not have been set yet
@@ -5763,7 +5911,7 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
         }
     }
 
-    private bool TrySetValueOnThis(string propertyName, object value)
+    private bool TrySetValueOnThis(string propertyName, object? value)
     {
         bool toReturn = false;
         try
@@ -5771,19 +5919,19 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
             switch (propertyName)
             {
                 case "AutoGridHorizontalCells":
-                    this.AutoGridHorizontalCells = (int)value;
+                    this.AutoGridHorizontalCells = (int)value!;
                     break;
                 case "AutoGridVerticalCells":
-                    this.AutoGridVerticalCells = (int)value;
+                    this.AutoGridVerticalCells = (int)value!;
                     break;
                 case "ChildrenLayout":
                 case "Children Layout":
-                    this.ChildrenLayout = (ChildrenLayout)value;
+                    this.ChildrenLayout = (ChildrenLayout)value!;
                     toReturn = true;
                     break;
                 case "ClipsChildren":
                 case "Clips Children":
-                    this.ClipsChildren = (bool)value;
+                    this.ClipsChildren = (bool)value!;
                     toReturn = true;
                     break;
 #if !FRB && NET6_0_OR_GREATER
@@ -5791,14 +5939,14 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
                     {
                         if (this is InteractiveGue interactiveGue)
                         {
-                            interactiveGue.ExposeChildrenEvents = (bool)value;
+                            interactiveGue.ExposeChildrenEvents = (bool)value!;
                             toReturn = true;
                         }
                     }
                     break;
 #endif
                 case "FlipHorizontal":
-                    this.FlipHorizontal = (bool)value;
+                    this.FlipHorizontal = (bool)value!;
                     toReturn = true;
                     break;
 #if !FRB && NET6_0_OR_GREATER
@@ -5806,23 +5954,23 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
                     {
                         if (this is InteractiveGue interactiveGue)
                         {
-                            interactiveGue.HasEvents = (bool)value;
+                            interactiveGue.HasEvents = (bool)value!;
                             toReturn = true;
                         }
                     }
                     break;
 #endif
                 case "Height":
-                    this.Height = (float)value;
+                    this.Height = (float)value!;
                     toReturn = true;
                     break;
                 case "HeightUnits":
                 case "Height Units":
-                    this.HeightUnits = (DimensionUnitType)value;
+                    this.HeightUnits = (DimensionUnitType)value!;
                     toReturn = true;
                     break;
                 case nameof(IgnoredByParentSize):
-                    this.IgnoredByParentSize = (bool)value;
+                    this.IgnoredByParentSize = (bool)value!;
                     toReturn = true;
                     break;
                 case nameof(MaxHeight):
@@ -5843,7 +5991,7 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
                     break;
                 case "Parent":
                     {
-                        string valueAsString = (string)value;
+                        string valueAsString = (string)value!;
 
                         if (!string.IsNullOrEmpty(valueAsString) && mWhatContainsThis != null)
                         {
@@ -5857,98 +6005,98 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
                     }
                     break;
                 case "Rotation":
-                    this.Rotation = (float)value;
+                    this.Rotation = (float)value!;
                     toReturn = true;
                     break;
                 case "StackSpacing":
-                    this.StackSpacing = (float)value;
+                    this.StackSpacing = (float)value!;
                     toReturn = true;
                     break;
                 case "TextureLeft":
                 case "Texture Left":
-                    this.TextureLeft = (int)value;
+                    this.TextureLeft = (int)value!;
                     toReturn = true;
                     break;
                 case "TextureTop":
                 case "Texture Top":
-                    this.TextureTop = (int)value;
+                    this.TextureTop = (int)value!;
                     toReturn = true;
                     break;
                 case "TextureWidth":
                 case "Texture Width":
-                    this.TextureWidth = (int)value;
+                    this.TextureWidth = (int)value!;
                     toReturn = true;
                     break;
                 case "TextureHeight":
                 case "Texture Height":
-                    this.TextureHeight = (int)value;
+                    this.TextureHeight = (int)value!;
                     toReturn = true;
 
                     break;
                 case "TextureWidthScale":
                 case "Texture Width Scale":
-                    this.TextureWidthScale = (float)value;
+                    this.TextureWidthScale = (float)value!;
                     toReturn = true;
                     break;
                 case "TextureHeightScale":
                 case "Texture Height Scale":
-                    this.TextureHeightScale = (float)value;
+                    this.TextureHeightScale = (float)value!;
                     toReturn = true;
                     break;
                 case "TextureAddress":
                 case "Texture Address":
-                    this.TextureAddress = (Gum.Managers.TextureAddress)value;
+                    this.TextureAddress = (Gum.Managers.TextureAddress)value!;
                     toReturn = true;
                     break;
                 case "Visible":
-                    this.Visible = (bool)value;
+                    this.Visible = (bool)value!;
                     toReturn = true;
                     break;
                 case "Width":
-                    this.Width = (float)value;
+                    this.Width = (float)value!;
                     toReturn = true;
                     break;
                 case "WidthUnits":
                 case "Width Units":
-                    this.WidthUnits = (DimensionUnitType)value;
+                    this.WidthUnits = (DimensionUnitType)value!;
                     toReturn = true;
                     break;
                 case "X":
-                    this.X = (float)value;
+                    this.X = (float)value!;
                     toReturn = true;
                     break;
                 case "XOrigin":
                 case "X Origin":
-                    this.XOrigin = (HorizontalAlignment)value;
+                    this.XOrigin = (HorizontalAlignment)value!;
                     toReturn = true;
                     break;
                 case "XUnits":
                 case "X Units":
-                    this.XUnits = UnitConverter.ConvertToGeneralUnit(value);
+                    this.XUnits = UnitConverter.ConvertToGeneralUnit(value!);
                     toReturn = true;
                     break;
                 case "Y":
-                    this.Y = (float)value;
+                    this.Y = (float)value!;
                     toReturn = true;
                     break;
                 case "YOrigin":
                 case "Y Origin":
-                    this.YOrigin = (VerticalAlignment)value;
+                    this.YOrigin = (VerticalAlignment)value!;
                     toReturn = true;
                     break;
                 case "YUnits":
                 case "Y Units":
 
-                    this.YUnits = UnitConverter.ConvertToGeneralUnit(value);
+                    this.YUnits = UnitConverter.ConvertToGeneralUnit(value!);
                     toReturn = true;
                     break;
                 case "Wrap":
-                    this.Wrap = (bool)value;
+                    this.Wrap = (bool)value!;
                     toReturn = true;
                     break;
                 case "WrapsChildren":
                 case "Wraps Children":
-                    this.WrapsChildren = (bool)value;
+                    this.WrapsChildren = (bool)value!;
                     toReturn = true;
                     break;
             }
@@ -5964,7 +6112,7 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
                     && propertyName[propertyNameLength - 5] == 'S'
                     && value is string)
                 {
-                    var valueAsString = value as string;
+                    var valueAsString = (string)value;
 
                     string nameWithoutState = propertyName.Substring(0, propertyName.Length - "State".Length);
 
@@ -6265,7 +6413,7 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
 
             var prefix = name.Substring(0, indexOfDot);
 
-            GraphicalUiElement container = null;
+            GraphicalUiElement? container = null;
             for (int i = mWhatThisContains.Count - 1; i > -1; i--)
             {
                 var item = mWhatThisContains[i];
@@ -6466,11 +6614,11 @@ public partial class GraphicalUiElement : IRenderableIpso, IVisible, INotifyProp
         {
             if (element.Parent.GetType().Equals(type))
             {
-                return element as GraphicalUiElement;
+                return element.Parent as GraphicalUiElement;
             }
             else
             {
-                return GetParentByType(element, type);
+                return GetParentByType(element.Parent, type);
             }
         }
         else
@@ -6837,7 +6985,7 @@ public static class GraphicalUiElementExtensions
     /// <param name="graphicalUiElement">The GraphicalUiElement on which to apply the animation</param>
     /// <param name="animation">The AnimationRuntime object to apply</param>
     /// <param name="timeInSeconds">The elapesd time since the animation started, in seconds.</param>
-    /// <exception cref="InvalidOperationException"></exception>
+    /// <exception cref="ArgumentNullException">Thrown when animation is null.</exception>
     public static void ApplyAnimation(this GraphicalUiElement graphicalUiElement, AnimationRuntime animation, double timeInSeconds)
     {
         if (animation != null)

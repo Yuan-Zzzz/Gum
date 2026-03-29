@@ -1,5 +1,5 @@
 ﻿using CodeOutputPlugin.Manager;
-using CodeOutputPlugin.Models;
+using Gum.ProjectServices.CodeGeneration;
 using CodeOutputPlugin.Views;
 using Gum;
 using Gum.Commands;
@@ -38,18 +38,22 @@ public class MainCodeOutputPlugin : PluginBase
 
     Views.CodeWindow? control;
     ViewModels.CodeWindowViewModel viewModel;
-    Models.CodeOutputProjectSettings codeOutputProjectSettings;
+    CodeOutputProjectSettings codeOutputProjectSettings;
 
-    private readonly CodeGenerationFileLocationsService _codeGenerationFileLocationsService;
-    private readonly CodeGenerationService _codeGenerationService;
+    private CodeGenerationFileLocationsService _codeGenerationFileLocationsService;
+    private CodeGenerationService _codeGenerationService;
+    private CodeOutputElementSettingsManager _elementSettingsManager;
     private readonly ISelectedState _selectedState;
-    private readonly RenameService _renameService;
+    private RenameService _renameService;
     private readonly IMessenger _messenger;
     private readonly LocalizationService _localizationService;
     private readonly INameVerifier _nameVerifier;
     private readonly CodeGenerator _codeGenerator;
     private readonly ParentSetLogic _parentSetLogic;
     private readonly IFileCommands _fileCommands;
+    private CodeOutputProjectSettingsManager _codeOutputProjectSettingsManager;
+    private readonly IProjectState _projectState;
+    private readonly CodeGenerationNameVerifier _codeGenerationNameVerifier;
 
     PluginTab pluginTab = default!;
 
@@ -72,27 +76,35 @@ public class MainCodeOutputPlugin : PluginBase
         _nameVerifier = Locator.GetRequiredService<INameVerifier>();
         _localizationService = Locator.GetRequiredService<LocalizationService>();
 
-        CodeGenerationNameVerifier codeGenerationNameVerifier = new(_nameVerifier);
+        _projectState = Locator.GetRequiredService<IProjectState>();
 
-        _codeGenerator = new CodeGenerator(codeGenerationNameVerifier, _localizationService);
+        _codeGenerationNameVerifier = new CodeGenerationNameVerifier(_nameVerifier);
+        _elementSettingsManager = new CodeOutputElementSettingsManager(_projectState.ProjectDirectory);
+        var typeStringResolver = new ToolTypeStringResolver();
 
-        var projectState = Locator.GetRequiredService<IProjectState>();
-        _codeGenerationFileLocationsService = new CodeGenerationFileLocationsService(_codeGenerator, codeGenerationNameVerifier, projectState);
+        _codeGenerator = new CodeGenerator(_codeGenerationNameVerifier, _localizationService, _elementSettingsManager, typeStringResolver);
+        _codeGenerator.ProjectDirectory = _projectState.ProjectDirectory;
+
+        _codeGenerationFileLocationsService = new CodeGenerationFileLocationsService(_codeGenerator, _codeGenerationNameVerifier, _projectState.ProjectDirectory);
 
         _selectedState = Locator.GetRequiredService<ISelectedState>();
 
-        var customCodeGenerator = new CustomCodeGenerator(_codeGenerator, codeGenerationNameVerifier);
-        _codeGenerationService = new CodeGenerationService(_guiCommands, _codeGenerator, _dialogService, customCodeGenerator, codeGenerationNameVerifier, projectState);
+        var customCodeGenerator = new CustomCodeGenerator(_codeGenerator, _codeGenerationNameVerifier);
+        _codeGenerationService = new CodeGenerationService(_guiCommands, _codeGenerator, _dialogService, customCodeGenerator, _codeGenerationNameVerifier, _projectState);
         _renameService = new RenameService(
             _codeGenerationService,
             _codeGenerator,
             customCodeGenerator,
-            codeGenerationNameVerifier,
+            _codeGenerationNameVerifier,
             _dialogService,
-            projectState);
+            _projectState);
 
         _messenger = Locator.GetRequiredService<IMessenger>();
         _fileCommands = Locator.GetRequiredService<IFileCommands>();
+
+        var codeGenLogger = new ToolCodeGenLogger(Locator.GetRequiredService<IOutputManager>());
+        _codeOutputProjectSettingsManager = new CodeOutputProjectSettingsManager(
+            codeGenLogger, _projectState.ProjectDirectory);
 
         _parentSetLogic = new ParentSetLogic(_codeGenerator);
 
@@ -104,7 +116,8 @@ public class MainCodeOutputPlugin : PluginBase
             Locator.GetRequiredService<IProjectState>(),
             Locator.GetRequiredService<IFileCommands>(),
             Locator.GetRequiredService<IDialogService>(),
-            Locator.GetRequiredService<IGuiCommands>());
+            Locator.GetRequiredService<IGuiCommands>(),
+            new CodeGenerationAutoSetupService());
     }
 
     private void HandleRequestCodeGeneration(RequestCodeGenerationMessage message)
@@ -160,7 +173,7 @@ public class MainCodeOutputPlugin : PluginBase
 
     private void HandleElementDeleted(ElementSave element)
     {
-        var elementSettings = CodeOutputElementSettingsManager.LoadOrCreateSettingsFor(element);
+        var elementSettings = _elementSettingsManager.LoadOrCreateSettingsFor(element);
 
         var visualApi = _codeGenerator.GetVisualApiForElement(element);
 
@@ -191,7 +204,20 @@ public class MainCodeOutputPlugin : PluginBase
 
     private void HandleProjectLoaded(GumProjectSave project)
     {
-        codeOutputProjectSettings = CodeOutputProjectSettingsManager.CreateOrLoadSettingsForProject();
+        // Reinitialize services that depend on the project directory
+        var projectDirectory = _projectState.ProjectDirectory;
+        _elementSettingsManager = new CodeOutputElementSettingsManager(projectDirectory);
+        _codeGenerator.ProjectDirectory = projectDirectory;
+        _codeGenerationFileLocationsService = new CodeGenerationFileLocationsService(_codeGenerator, _codeGenerationNameVerifier, projectDirectory);
+
+        var codeGenLogger = new ToolCodeGenLogger(Locator.GetRequiredService<IOutputManager>());
+        _codeOutputProjectSettingsManager = new CodeOutputProjectSettingsManager(codeGenLogger, projectDirectory);
+
+        var customCodeGenerator = new CustomCodeGenerator(_codeGenerator, _codeGenerationNameVerifier);
+        _codeGenerationService = new CodeGenerationService(_guiCommands, _codeGenerator, _dialogService, customCodeGenerator, _codeGenerationNameVerifier, _projectState);
+        _renameService = new RenameService(_codeGenerationService, _codeGenerator, customCodeGenerator, _codeGenerationNameVerifier, _dialogService, _projectState);
+
+        codeOutputProjectSettings = _codeOutputProjectSettingsManager.CreateOrLoadSettingsForProject();
         viewModel.InheritanceLocation = codeOutputProjectSettings.InheritanceLocation;
         HandleElementSelected(null);
     }
@@ -242,11 +268,11 @@ public class MainCodeOutputPlugin : PluginBase
         var projectState = Locator.GetRequiredService<IProjectState>();
         if (element != null && projectState.GumProjectSave?.FullFileName != null)
         {
-            control.CodeOutputElementSettings = CodeOutputElementSettingsManager.LoadOrCreateSettingsFor(element);
+            control.CodeOutputElementSettings = _elementSettingsManager.LoadOrCreateSettingsFor(element);
         }
         else
         {
-            control.CodeOutputElementSettings = new Models.CodeOutputElementSettings();
+            control.CodeOutputElementSettings = new CodeOutputElementSettings();
         }
     }
 
@@ -304,7 +330,7 @@ public class MainCodeOutputPlugin : PluginBase
 
             if (control.CodeOutputElementSettings == null)
             {
-                control.CodeOutputElementSettings = new Models.CodeOutputElementSettings();
+                control.CodeOutputElementSettings = new CodeOutputElementSettings();
             }
 
             var elementSettings = control.CodeOutputElementSettings;
@@ -360,7 +386,7 @@ public class MainCodeOutputPlugin : PluginBase
         control.CodeOutputProjectSettings = codeOutputProjectSettings;
         if(control.CodeOutputElementSettings == null)
         {
-            control.CodeOutputElementSettings = new Models.CodeOutputElementSettings();
+            control.CodeOutputElementSettings = new CodeOutputElementSettings();
         }
 
         var instance = _selectedState.SelectedInstance;
@@ -370,7 +396,7 @@ public class MainCodeOutputPlugin : PluginBase
 
         var settings = control.CodeOutputElementSettings;
 
-        if(settings.GenerationBehavior != Models.GenerationBehavior.NeverGenerate)
+        if(settings.GenerationBehavior != GenerationBehavior.NeverGenerate)
         {
             ObjectFinder.Self.EnableCache();
             try
@@ -452,7 +478,7 @@ public class MainCodeOutputPlugin : PluginBase
                 break;
             case nameof(viewModel.InheritanceLocation):
                 codeOutputProjectSettings.InheritanceLocation = viewModel.InheritanceLocation;
-                CodeOutputProjectSettingsManager.WriteSettingsForProject(codeOutputProjectSettings);
+                _codeOutputProjectSettingsManager.WriteSettingsForProject(codeOutputProjectSettings);
                 break;
             default:
                 RefreshCodeDisplay();
@@ -465,11 +491,11 @@ public class MainCodeOutputPlugin : PluginBase
         var element = _selectedState.SelectedElement;
         if(element != null && control?.CodeOutputElementSettings != null)
         {
-            CodeOutputElementSettingsManager.WriteSettingsForElement(element, control.CodeOutputElementSettings);
+            _elementSettingsManager.WriteSettingsForElement(element, control.CodeOutputElementSettings);
 
             RefreshCodeDisplay();
         }
-        CodeOutputProjectSettingsManager.WriteSettingsForProject(codeOutputProjectSettings);
+        _codeOutputProjectSettingsManager.WriteSettingsForProject(codeOutputProjectSettings);
     }
 
     private void HandleGenerateCodeButtonClicked()
@@ -504,8 +530,8 @@ public class MainCodeOutputPlugin : PluginBase
                             continue;
                         }
 
-                        var elementOutputSettings = CodeOutputElementSettingsManager.LoadOrCreateSettingsFor(element);
-                        if(elementOutputSettings.GenerationBehavior != Models.GenerationBehavior.NeverGenerate)
+                        var elementOutputSettings = _elementSettingsManager.LoadOrCreateSettingsFor(element);
+                        if(elementOutputSettings.GenerationBehavior != GenerationBehavior.NeverGenerate)
                         {
                             _codeGenerationService.GenerateCodeForElement(element, elementOutputSettings, codeOutputProjectSettings, showPopups: false);
                             numberOfElements++;
@@ -532,13 +558,13 @@ public class MainCodeOutputPlugin : PluginBase
         var gumProject = projectState.GumProjectSave;
         foreach (var screen in gumProject.Screens)
         {
-            var screenOutputSettings = CodeOutputElementSettingsManager.LoadOrCreateSettingsFor(screen);
+            var screenOutputSettings = _elementSettingsManager.LoadOrCreateSettingsFor(screen);
             _codeGenerationService.GenerateCodeForElement(
                 screen, screenOutputSettings, codeOutputProjectSettings, showPopups: false);
         }
         foreach(var component in gumProject.Components)
         {
-            var componentOutputSettings = CodeOutputElementSettingsManager.LoadOrCreateSettingsFor(component);
+            var componentOutputSettings = _elementSettingsManager.LoadOrCreateSettingsFor(component);
             _codeGenerationService.GenerateCodeForElement(
                 component, componentOutputSettings, codeOutputProjectSettings, showPopups: false);
         }

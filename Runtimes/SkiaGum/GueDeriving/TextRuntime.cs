@@ -6,13 +6,14 @@ using Gum.Wireframe;
 using RenderingLibrary.Graphics;
 using SkiaSharp;
 using System;
+using System.Collections.Generic;
 
 namespace SkiaGum.GueDeriving;
 
 /// <summary>
 /// A visual text element which can display a string.
 /// </summary>
-public class TextRuntime : BindableGue
+public class TextRuntime : GraphicalUiElement
 {
     #region Skia-specific properties, which may go away in the future
     public static int DefaultRed { get; set; } = 69;
@@ -102,7 +103,7 @@ public class TextRuntime : BindableGue
         }
     }
 
-    public Gum.RenderingLibrary.Blend Blend
+    public Gum.RenderingLibrary.Blend? Blend
     {
         get
         {
@@ -110,7 +111,10 @@ public class TextRuntime : BindableGue
         }
         set
         {
-            BlendState = value.ToBlendState().ToXNA();
+            if (value.HasValue)
+            {
+                BlendState = value.Value.ToBlendState().ToXNA();
+            }
             // NotifyPropertyChanged handled by BlendState:
         }
     }
@@ -167,7 +171,11 @@ public class TextRuntime : BindableGue
     public HorizontalAlignment HorizontalAlignment
     {
         get => ContainedText.HorizontalAlignment;
-        set => ContainedText.HorizontalAlignment = value;
+        set
+        {
+            ContainedText.HorizontalAlignment = value;
+            NotifyPropertyChanged();
+        }
     }
 
     /// <summary>
@@ -186,26 +194,32 @@ public class TextRuntime : BindableGue
     /// </summary>
     public int? MaxLettersToShow
     {
-        get => mContainedText.MaxLettersToShow;
+        get => ContainedText.MaxLettersToShow;
         set
         {
-            mContainedText.MaxLettersToShow = value;
+            ContainedText.MaxLettersToShow = value;
         }
     }
 #endif
 
-#if !RAYLIB
     /// <summary>
-    /// The maximum number of lines to display. This can be used to 
+    /// The maximum number of lines to display. This can be used to
     /// limit how many lines of text are displayed at one time.
     /// </summary>
     public int? MaxNumberOfLines
     {
-        get => mContainedText.MaxNumberOfLines;
-        set => mContainedText.MaxNumberOfLines = value;
+        get => ContainedText.MaxNumberOfLines;
+        set => ContainedText.MaxNumberOfLines = value;
+    }
+
+
+#if RAYLIB
+    public Font CustomFont
+    {
+        get => ContainedText.Font;
+        set => ContainedText.Font = value;
     }
 #endif
-
 
 #if !SKIA
     public BitmapFont BitmapFont
@@ -223,68 +237,190 @@ public class TextRuntime : BindableGue
     }
 #endif
 
-        /// <summary>
-        /// A multiplier used when rendering the text. The default value is 1.0.
-        /// </summary>
 #if RAYLIB || XNALIKE
+    /// <summary>
+    /// A multiplier used when rendering the text. The default value is 1.0.
+    /// </summary>
     /// <remarks>
     /// Setting this value to a value other than 1 scales the text accordingly. This is
     /// a scalue value applied to the existing font, so a value larger than 1 can result
     /// in the font appearing pixellated.
-    /// 
+    ///
     /// Since this value does not affect the underlying Font, it can be changed without
     /// requiring a dedicated font asset.
     /// </remarks>
+#else
+    /// <summary>
+    /// A multiplier used when rendering the text. The default value is 1.0.
+    /// </summary>
 #endif
     public float FontScale
     {
         get => ContainedText.FontScale;
-        set => ContainedText.FontScale = value;
+        set
+        {
+            if (value != FontScale)
+            {
+                ContainedText.FontScale = value;
+                NotifyPropertyChanged();
+                UpdateLayout();
+            }
+        }
     }
 
     public float LineHeightMultiplier
     {
         get => ContainedText.LineHeightMultiplier;
-        set => ContainedText.LineHeightMultiplier = value;
-    }
-
-    TextOverflowHorizontalMode textOverflowHorizontalMode;
-    public TextOverflowHorizontalMode TextOverflowHorizontalMode
-    {
-        get => textOverflowHorizontalMode;
         set
         {
-            textOverflowHorizontalMode = value;
-            if (textOverflowHorizontalMode == TextOverflowHorizontalMode.EllipsisLetter)
+            if (value != LineHeightMultiplier)
             {
-                ContainedText.IsTruncatingWithEllipsisOnLastLine = true;
-            }
-            else
-            {
-                ContainedText.IsTruncatingWithEllipsisOnLastLine = false;
+                ContainedText.LineHeightMultiplier = value;
+                NotifyPropertyChanged();
+                UpdateLayout();
             }
         }
     }
 
-
-    public string Text
+    public TextOverflowHorizontalMode TextOverflowHorizontalMode
     {
-        get => ContainedText.RawText;
-        set => ContainedText.RawText = value;
+        // Currently GraphicalUiElement doesn't expose this property so we have to go through setting it by string:
+        get => ContainedText.IsTruncatingWithEllipsisOnLastLine ? TextOverflowHorizontalMode.EllipsisLetter : TextOverflowHorizontalMode.TruncateWord;
+        set
+        {
+            ContainedText.IsTruncatingWithEllipsisOnLastLine = value == TextOverflowHorizontalMode.EllipsisLetter;
+            NotifyPropertyChanged();
+            UpdateLayout();
+        }
     }
+
+#if !SKIA
+    /// <summary>
+    /// Gets or sets the text rendering position mode to use for the contained text, overriding the default behavior if
+    /// specified.
+    /// </summary>
+    /// <remarks>Set this property to control how text positioning is handled during rendering. If the value
+    /// is <see langword="null"/>, the default rendering position mode is used. Changing this property affects only the
+    /// contained text and does not impact other elements.</remarks>
+    public TextRenderingPositionMode? TextRenderingPositionMode
+    {
+        get => ContainedText.OverrideTextRenderingPositionMode;
+        set => ContainedText.OverrideTextRenderingPositionMode = value;
+    }
+#endif
+
+    /// <summary>
+    /// Gets or sets the raw text content displayed by the control. This is the value before line wrapping and bbcode parsing has been applied.
+    /// </summary>
+    /// <remarks>
+    /// Setting this property updates the displayed text and may trigger layout changes if the text
+    /// size affects the control's dimensions. If the control's width is set relative to its children and no maximum
+    /// width is specified, the text will not be line-wrapped.
+    /// If a <see cref="Gum.Localization.LocalizationService"/> is registered, the assigned value is passed through
+    /// <see cref="Gum.Localization.LocalizationService.Translate"/> before being applied. To bypass translation
+    /// (for example, for user-entered text), use <see cref="SetTextNoTranslate"/> instead.
+    /// </remarks>
+    public string? Text
+    {
+        get
+        {
+            return ContainedText.RawText;
+        }
+        set
+        {
+            var widthBefore = ContainedText.WrappedTextWidth;
+            var heightBefore = ContainedText.WrappedTextHeight;
+            if (this.WidthUnits == Gum.DataTypes.DimensionUnitType.RelativeToChildren)
+            {
+                if (this.MaxWidth == null)
+                {
+                    // make it have no line wrap width before assignign the text:
+                    ContainedText.Width = null;
+                }
+                else
+                {
+                    ContainedText.Width = this.MaxWidth;
+                }
+            }
+
+            // Use SetProperty so it goes through the BBCode-checking methods
+            //ContainedText.RawText = value;
+            this.SetProperty("Text", value);
+
+            NotifyPropertyChanged();
+            var shouldUpdate = widthBefore != ContainedText.WrappedTextWidth || heightBefore != ContainedText.WrappedTextHeight;
+            if (shouldUpdate)
+            {
+                UpdateLayout(
+                    Gum.Wireframe.GraphicalUiElement.ParentUpdateType.IfParentWidthHeightDependOnChildren |
+                    Gum.Wireframe.GraphicalUiElement.ParentUpdateType.IfParentStacks, int.MaxValue / 2);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Sets the text without applying localization/translation. Equivalent to calling
+    /// <c>SetProperty("TextNoTranslate", value)</c>.
+    /// </summary>
+    /// <remarks>
+    /// This is a method rather than a property because the "no translate" state is not preserved on
+    /// the underlying text renderable — only the final string is stored. A corresponding getter would
+    /// have no way to distinguish translated from untranslated text, so a property would be misleading.
+    /// Use this for text that should not be localized, such as user-entered input in a TextBox.
+    /// </remarks>
+    public void SetTextNoTranslate(string? value)
+    {
+        var widthBefore = ContainedText.WrappedTextWidth;
+        var heightBefore = ContainedText.WrappedTextHeight;
+        if (this.WidthUnits == Gum.DataTypes.DimensionUnitType.RelativeToChildren)
+        {
+            if (this.MaxWidth == null)
+            {
+                ContainedText.Width = null;
+            }
+            else
+            {
+                ContainedText.Width = this.MaxWidth;
+            }
+        }
+
+        this.SetProperty("TextNoTranslate", value);
+
+        NotifyPropertyChanged(nameof(Text));
+        var shouldUpdate = widthBefore != ContainedText.WrappedTextWidth || heightBefore != ContainedText.WrappedTextHeight;
+        if (shouldUpdate)
+        {
+            UpdateLayout(
+                Gum.Wireframe.GraphicalUiElement.ParentUpdateType.IfParentWidthHeightDependOnChildren |
+                Gum.Wireframe.GraphicalUiElement.ParentUpdateType.IfParentStacks, int.MaxValue / 2);
+        }
+    }
+
+#if !SKIA
+    /// <summary>
+    /// The lines of text after wrapping and bbcode parsing have been applied.
+    /// </summary>
+    public IReadOnlyList<string> WrappedText => ContainedText.WrappedText;
+
+    public OverlapDirection OverlapDirection
+    {
+        get => ContainedText.OverlapDirection;
+        set => ContainedText.OverlapDirection = value;
+    }
+#endif
 
     public bool IsBold
     {
-        get => mContainedText.BoldWeight > 1;
+        get => ContainedText.BoldWeight > 1;
         set
         {
             if(value)
             {
-                mContainedText.BoldWeight = 1.5f;
+                ContainedText.BoldWeight = 1.5f;
             }
             else
             {
-                mContainedText.BoldWeight = 1;
+                ContainedText.BoldWeight = 1;
             }
         }
     }
@@ -296,8 +432,8 @@ public class TextRuntime : BindableGue
     /// </summary>
     public float BoldWeight
     {
-        get => mContainedText.BoldWeight;
-        set => mContainedText.BoldWeight = value;
+        get => ContainedText.BoldWeight;
+        set => ContainedText.BoldWeight = value;
     }
 
     //public SKTypeface FontType
@@ -340,14 +476,14 @@ public class TextRuntime : BindableGue
         set { useCustomFont = value; UpdateToFontValues(); }
     }
 
-    string customFontFile;
+    string? customFontFile;
     /// <summary>
     /// Specifies the name of the custom font. This can be specified relative to
     /// FileManager.RelativeDirectory, which is the Content folder for code-only projects,
     /// or the folder containing the .gumx project if loading a Gum project. This should
     /// include the .fnt extension.
     /// </summary>
-    public string CustomFontFile
+    public string? CustomFontFile
     {
         get { return customFontFile; }
         set { customFontFile = value; UpdateToFontValues(); }
@@ -355,9 +491,18 @@ public class TextRuntime : BindableGue
 
     string font;
     /// <summary>
-    /// The font name, such as "Arial", which is used to load fonts from 
+    /// The font name, such as "Arial", which is used to load fonts from
     /// </summary>
     public string Font
+    {
+        get => FontFamily;
+        set => FontFamily = value;
+    }
+
+    /// <summary>
+    /// The font name, such as "Arial", which is used to load fonts from
+    /// </summary>
+    public string FontFamily
     {
         get { return font; }
         set { font = value; UpdateToFontValues(); }
@@ -370,14 +515,14 @@ public class TextRuntime : BindableGue
         set { isItalic = value; UpdateToFontValues(); }
     }
 
-    //// Not sure if we need to make this a public value, but we do need to store it
-    //// Update - yes we do need this to be public so it can be assigned in codegen:
-    //bool useFontSmoothing = true;
-    //public bool UseFontSmoothing
-    //{
-    //    get { return useFontSmoothing; }
-    //    set { useFontSmoothing = value; UpdateToFontValues(); }
-    //}
+    // Not sure if we need to make this a public value, but we do need to store it
+    // Update - yes we do need this to be public so it can be assigned in codegen:
+    bool useFontSmoothing = true;
+    public bool UseFontSmoothing
+    {
+        get { return useFontSmoothing; }
+        set { useFontSmoothing = value; UpdateToFontValues(); }
+    }
 
     int outlineThickness;
     public int OutlineThickness
@@ -386,10 +531,44 @@ public class TextRuntime : BindableGue
         set { outlineThickness = value; UpdateToFontValues(); }
     }
 
+    #region Defaults
+
+    // todo - add more here
+    public static string DefaultFont = "Arial";
+    public static int DefaultFontSize = 18;
+
+    /// <summary>
+    /// Indicates whether the font should be assigned during object construction.
+    /// </summary>
+    /// <remarks>Set this field to <see langword="true"/> to assign the font in the constructor, or to <see
+    /// langword="false"/> to defer font assignment until later in the object's lifecycle. This can be set to false
+    /// if TextRuntime instances are always given a custom font, so this can prevent unnecessary font loading/assignment.</remarks>
+    public static bool AssignFontInConstructor = true;
+
+    /// <summary>
+    /// A default BitmapFont to assign to all new TextRuntime instances during construction.
+    /// When set, this takes priority over <see cref="DefaultFont"/> and <see cref="DefaultFontSize"/>.
+    /// When null, the default font is constructed from <see cref="DefaultFont"/> and <see cref="DefaultFontSize"/>.
+    /// </summary>
+#if !RAYLIB && !SKIA
+    public static BitmapFont? DefaultCustomFont;
+#elif RAYLIB
+    public static Font? DefaultCustomFont;
+#endif
+
+    public float DefaultWidth = 0;
+    public float DefaultHeight = 0;
+
+    public DimensionUnitType DefaultWidthUnits = DimensionUnitType.RelativeToChildren;
+    public DimensionUnitType DefaultHeightUnits = DimensionUnitType.RelativeToChildren;
+
+    #endregion
+
     public TextRuntime (bool fullInstantiation = true)
     {
         if(fullInstantiation)
         {
+            this.SuspendLayout();
             SetContainedObject(new Text());
 
             this.Height = 0;
@@ -407,6 +586,7 @@ public class TextRuntime : BindableGue
             Blue = 255;
 
             this.Text = "Hello";
+            this.ResumeLayout();
         }
     }
 
@@ -418,4 +598,20 @@ public class TextRuntime : BindableGue
 
         return toReturn;
     }
+
+#if !RAYLIB && !SKIA
+    // We should phase this out, so not adding it to raylib. Instead, add to root
+    public void AddToManagers() => base.AddToManagers(SystemManagers.Default, layer:null);
+#endif
+
+#if !SKIA
+    /// <summary>
+    /// Returns the index of the character at the specified screen position. This returns the index
+    /// within the WrappedText, so to index in, you need to loop through each line.
+    /// </summary>
+    /// <param name="screenX">The screen x position, usually obtained by Cursor.XRespectingGumZoomAndBounds()</param>
+    /// <param name="screenY">The screen y position, usually obtained by Cursor.YRespectingGumZoomAndBounds()</param>
+    /// <returns>The index in the WrappedText</returns>
+    public int GetCharacterIndexAtPosition(float screenX, float screenY) => ContainedText.GetCharacterIndexAtPosition(screenX, screenY);
+#endif
 }

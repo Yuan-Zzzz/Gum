@@ -13,6 +13,7 @@ using Gum.Controls;
 using System.Windows.Media;
 using Gum.Plugins.InternalPlugins.VariableGrid;
 using RenderingLibrary.Graphics;
+using Gum.Logic;
 using Gum.Services;
 using Gum.Undo;
 using Gum.Commands;
@@ -146,7 +147,8 @@ public partial class PropertyGridManager
             _typeManager,
             _selectedState,
             _undoManager,
-            _pluginManager);
+            _pluginManager,
+            Locator.GetRequiredService<IVariableSaveLogic>());
 
         mainControl = new Gum.MainPropertyGrid();
 
@@ -162,8 +164,6 @@ public partial class PropertyGridManager
         mainControl.DataContext = VariableViewModel;
         mainControl.SelectedBehaviorVariableChanged += HandleBehaviorVariableSelected;
         mainControl.AddVariableClicked += HandleAddVariable;
-
-        InitializeRightClickMenu();
     }
 
     private void HandleBehaviorVariableSelected(object? sender, EventArgs e)

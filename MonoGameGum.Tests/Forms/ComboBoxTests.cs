@@ -66,6 +66,21 @@ public  class ComboBoxTests : BaseTestClass
     }
 
     [Fact]
+    public void Items_AssignTypedCollection_ShouldSyncInternalListBoxItems()
+    {
+        // A typed ObservableCollection<string> assigned to ComboBox.Items was a
+        // bug vector: HandleCollectionNewItemCreated would try to insert a ListBoxItem
+        // into the typed collection, throwing ArgumentException.
+        var items = new ObservableCollection<string> { "A", "B", "C" };
+        ComboBox comboBox = new();
+
+        comboBox.Items = items;
+
+        comboBox.ListBox!.Items!.Count.ShouldBe(3);
+        comboBox.ListBox!.ListBoxItems.Count.ShouldBe(3);
+    }
+
+    [Fact]
     public void IsDropDownOpen_ShouldNotResetListBoxItemBindingContext()
     {
         ComboBox comboBox = new();
@@ -85,17 +100,17 @@ public  class ComboBoxTests : BaseTestClass
             nameof(comboBox.Items),
             nameof(viewModel.Items));
 
-        comboBox.ListBox.Items.Count.ShouldBe(3);
-        comboBox.ListBox.ListBoxItems.Count.ShouldBe(3);
-        comboBox.ListBox.ListBoxItems[0].BindingContext.ShouldBe("1");
+        comboBox.ListBox!.Items!.Count.ShouldBe(3);
+        comboBox.ListBox!.ListBoxItems.Count.ShouldBe(3);
+        comboBox.ListBox!.ListBoxItems[0]!.BindingContext.ShouldBe("1");
 
         comboBox.IsDropDownOpen = true;
 
-        comboBox.ListBox.ListBoxItems[0].BindingContext.ShouldBe("1");
+        comboBox.ListBox!.ListBoxItems[0]!.BindingContext.ShouldBe("1");
 
         comboBox.IsDropDownOpen = false;
 
-        comboBox.ListBox.ListBoxItems[0].BindingContext.ShouldBe("1");
+        comboBox.ListBox!.ListBoxItems[0]!.BindingContext.ShouldBe("1");
 
     }
 

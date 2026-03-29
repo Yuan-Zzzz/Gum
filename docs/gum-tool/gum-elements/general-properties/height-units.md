@@ -202,6 +202,20 @@ In this case, the height is 41 pixels tall. This is based on the lineHeight as d
 
 <figure><img src="../../../.gitbook/assets/FntImage.png" alt=""><figcaption><p>Font36Arial has a lineHeight of 41.</p></figcaption></figure>
 
+## Relative to Max of Children or Parent
+
+`Relative to Max of Children or Parent` sizes an element to whichever is larger — its parent's height or the height needed to contain its children. The `Height` value acts as padding on the children side, the same as `Relative to Children`. A `Height` of `0` means the element is exactly the larger of its parent's height or its children's bounds.
+
+This unit is most useful when multiple siblings all use `Relative to Max of Children or Parent`. In this case, the sibling with the tallest content drives the parent's height, which in turn sets the height of all shorter siblings. This creates a row of elements that always match each other's height regardless of their individual content.
+
+<figure><img src="../../../.gitbook/assets/26_09 13 04.png" alt=""><figcaption><p>The right blue rectangle's effective height is controlled by the taller of its parent (red rectangle) or child (white rectangle)</p></figcaption></figure>
+
+For example, consider a horizontal row of text frames (colored rectangles each containing a Text instance). Each frame uses `Relative to Max of Children or Parent` for its `Height Units`. When one Text instance wraps to more lines and becomes taller, that frame grows to fit its content. Because the taller frame pushes the parent to grow, all other frames also grow to match — keeping the row uniform.
+
+<figure><img src="../../../.gitbook/assets/26_09 14 50.gif" alt=""><figcaption><p>Changes to the text cause size changes in the blue and ultimately red rectangle, which affects the size of sibling blue rectangles</p></figcaption></figure>
+
+Without this unit, you would need to either set a fixed height on all frames (which cannot adapt to content) or use `Relative to Children` on each frame (which makes each frame a different height based on its own content).
+
 ## Percentage of Width
 
 `Percentage of Width` adjusts the object's effective height so it remains proportional to the `Width` value multiplied by the `Height` value (as a percentage). For example, if a `Height` value of 200 is entered, then the effective height is 200% (2x) of the `Width`.
@@ -237,3 +251,13 @@ When this value is used, a Sprite's `Width` can be changed resulting in its abso
 When using `Maintain File Aspect Ratio Height`, the Sprite's absolute height depends on the Sprite's `Texture Height` property.
 
 <figure><img src="../../../.gitbook/assets/30_07 25 09.gif" alt=""><figcaption><p>Changing either <code>Width</code> or <code>Texture Height</code> affects the Sprite's absolute height</p></figcaption></figure>
+
+## Absolute Multiplied by Font Scale
+
+Absolute Multiplied by Font Scale is a value which multiplies an object's Height value by the global Font Scale value. This can be used to create heights which are responsive to font scale for devices which may have variable text sizes.
+
+The Font Scale value can be adjusted in the Editor tab to preview different global Font Scale values. When a Gum project is loaded at runtime, the runtime may apply a `Font Scale` value such as using the **Text size** from Windows.
+
+The global Font Scale value is set to 4, so the rectangle in the following image is drawn at an effective height of 200 pixels.
+
+<figure><img src="../../../.gitbook/assets/05_05 40 02.png" alt=""><figcaption><p>Height affected by global Font Scale</p></figcaption></figure>

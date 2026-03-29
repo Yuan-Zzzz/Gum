@@ -70,6 +70,7 @@ The code above includes the following sections:
 * Once Gum is initialized, we can create controls such as the `StackPanel` which contains all other controls. By calling `AddToRoot`, the `mainPanel` is drawn and receives input. All items added to the `StackPanel` will also be drawn and receive input, so we only need to call `AddToRoot` on the `StackPanel`.
 
 ```csharp
+// Initialize
 GumUI.Initialize(this, DefaultVisualsVersion.V3);
 var mainPanel = new StackPanel();
 mainPanel.AddToRoot();
@@ -78,12 +79,14 @@ mainPanel.AddToRoot();
 * Update - this updates the internal keyboard, mouse, and gamepad instances and applies default behavior to any forms components. For example, if a `Button` is added to the `StackPanel`, this code is responsible for checking if the cursor is overlapping the `Button` and adjusting the highlight/pressed state appropriately.
 
 ```csharp
+// Update
 GumUI.Update(gameTime);
 ```
 
 * Draw - this method draws all Gum objects to the screen. This method does not yet perform any drawing since `StackPanels` are invisible, but we'll be adding controls later in this tutorial.
 
 ```csharp
+// Draw
 GumUI.Draw();
 ```
 
@@ -118,6 +121,8 @@ Now that we have Gum running, we can add controls to our `StackPanel` (`mainPane
     base.Initialize();
 }
 </code></pre>
+
+[Try on XnaFiddle.NET](https://xnafiddle.net/#snippet=H4sIAAAAAAAAA12NSwvCMBCE_8oSPFSQUBQvSg--EA-KaNGLINEsdGmagN34xP9uH6LibWfmm9mHmOVTn4kenzy2BFliUobuKHrirE6QKbJLZdFABBYvsGZ1TCsjaPZ39hPLDeVeGTnQOnYr57iKy4WDZ3b2XR9W4q9adEYJGR3UaBnWl4zxykVz58Ow3R4ZOqYwx1p9oS1pTgqq0w2_Zg1X6DCCYN-CfROiUncm__ONn33UoBge61vOmMmxYowpQ7lwl-f7r3i-AEs5ZmU0AQAA)
 
 <figure><img src="../../../../.gitbook/assets/13_07 03 09.gif" alt=""><figcaption></figcaption></figure>
 

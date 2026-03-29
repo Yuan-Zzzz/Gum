@@ -89,6 +89,11 @@ internal class MainTreeViewPlugin : InternalPlugin, IRecipient<ApplicationTeardo
         this.StateAdd += HandleStateAdd;
         this.StateDelete += HandleStateDelete;
         this.CategoryDelete += HandleCategoryDelete;
+        this.BehaviorReferencesChanged += HandleBehaviorReferencesChanged;
+        this.BehaviorInstanceAdd += HandleBehaviorInstanceAdd;
+        this.BehaviorInstanceDelete += HandleBehaviorInstanceDelete;
+        this.BehaviorInstanceRename += HandleBehaviorInstanceRename;
+        this.ElementImported += HandleElementImported;
     }
 
     private void HandleElementReloaded(ElementSave save)
@@ -176,6 +181,13 @@ internal class MainTreeViewPlugin : InternalPlugin, IRecipient<ApplicationTeardo
     private void HandleElementAdd(ElementSave save)
     {
         _elementTreeViewManager.RefreshUi();
+        RefreshErrorIndicatorsForAllElements();
+    }
+
+    private void HandleElementImported(ElementSave save)
+    {
+        _elementTreeViewManager.RefreshUi();
+        RefreshErrorIndicatorsForAllElements();
     }
 
     private void HandleBehaviorCreated(BehaviorSave save)
@@ -186,6 +198,7 @@ internal class MainTreeViewPlugin : InternalPlugin, IRecipient<ApplicationTeardo
     private void HandleElementDeleted(ElementSave save)
     {
         _elementTreeViewManager.RefreshUi();
+        RefreshErrorIndicatorsForAllElements();
     }
 
     private void HandleBehaviorSelected(BehaviorSave save)
@@ -200,19 +213,35 @@ internal class MainTreeViewPlugin : InternalPlugin, IRecipient<ApplicationTeardo
             {
                 return;
             }
-            _elementTreeViewManager.Select(save);
+            _elementTreeViewManager.SuppressCallAfterClickSelect = true;
+            try
+            {
+                _elementTreeViewManager.Select(save);
+            }
+            finally
+            {
+                _elementTreeViewManager.SuppressCallAfterClickSelect = false;
+            }
         }
     }
 
     private void HandleElementSelected(ElementSave save)
     {
-        if(save != null)
+        _elementTreeViewManager.SuppressCallAfterClickSelect = true;
+        try
         {
-            _elementTreeViewManager.Select(save);
+            if(save != null)
+            {
+                _elementTreeViewManager.Select(save);
+            }
+            else if(save == null && _elementTreeViewManager.SelectedNode?.Tag is ElementSave)
+            {
+                _elementTreeViewManager.SelectedNode = null;
+            }
         }
-        else if(save == null && _elementTreeViewManager.SelectedNode?.Tag is ElementSave)
+        finally
         {
-            _elementTreeViewManager.SelectedNode = null;
+            _elementTreeViewManager.SuppressCallAfterClickSelect = false;
         }
     }
 
@@ -220,18 +249,27 @@ internal class MainTreeViewPlugin : InternalPlugin, IRecipient<ApplicationTeardo
     {
         if(element != null || instance != null)
         {
-            if(instance != null)
+            // The selection already happened and plugin events already fired.
+            // We just need to sync the tree view's visual state — don't re-fire
+            // CallAfterClickSelect which would cause a redundant plugin cascade.
+            _elementTreeViewManager.SuppressCallAfterClickSelect = true;
+            try
             {
+                if(instance != null)
+                {
+                    _elementTreeViewManager.Select(_selectedState.SelectedInstances);
+                }
 
-                _elementTreeViewManager.Select(_selectedState.SelectedInstances);
+                if(instance == null && element != null)
+                {
+                    _elementTreeViewManager.Select(element);
+                }
             }
-
-            if(instance == null && element != null)
+            finally
             {
-                _elementTreeViewManager.Select(element);
+                _elementTreeViewManager.SuppressCallAfterClickSelect = false;
             }
         }
-
     }
 
     void IRecipient<ApplicationTeardownMessage>.Receive(ApplicationTeardownMessage message)
@@ -309,6 +347,38 @@ internal class MainTreeViewPlugin : InternalPlugin, IRecipient<ApplicationTeardo
     {
         _elementTreeViewManager.RefreshUi();
         RefreshErrorIndicatorsForElement(_selectedState.SelectedElement);
+    }
+
+    private void HandleBehaviorReferencesChanged(ElementSave elementSave)
+    {
+        RefreshErrorIndicatorsForElement(elementSave);
+    }
+
+    private void HandleBehaviorInstanceAdd(BehaviorSave behavior, BehaviorInstanceSave instance)
+    {
+        RefreshErrorIndicatorsForElementsReferencingBehavior(behavior);
+    }
+
+    private void HandleBehaviorInstanceDelete(BehaviorSave behavior, BehaviorInstanceSave instance)
+    {
+        RefreshErrorIndicatorsForElementsReferencingBehavior(behavior);
+    }
+
+    private void HandleBehaviorInstanceRename(BehaviorSave behavior, BehaviorInstanceSave instance)
+    {
+        RefreshErrorIndicatorsForElementsReferencingBehavior(behavior);
+    }
+
+    private void RefreshErrorIndicatorsForElementsReferencingBehavior(BehaviorSave behavior)
+    {
+        var project = _projectState.GumProjectSave;
+        if (project == null) return;
+        var referencingElements = project.Components
+            .Where(c => c.Behaviors.Any(b => b.BehaviorName == behavior.Name));
+        foreach (var element in referencingElements)
+        {
+            RefreshErrorIndicatorsForElement(element);
+        }
     }
 
     private void SaveTreeViewState()

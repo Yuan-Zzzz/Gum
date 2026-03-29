@@ -37,12 +37,9 @@ public class KniGumInCodeGame : Game
 
     protected override void Initialize()
     {
-        GumUI.Initialize(this, Gum.Forms.DefaultVisualsVersion.V2);
+        GumUI.Initialize(this, Gum.Forms.DefaultVisualsVersion.Newest);
 
-        // adjust this to zoom in or out
-        //SystemManagers.Default.Renderer.Camera.Zoom = 3;
-        // This can be used to make everything render with linear:
-        //Renderer.TextureFilter = TextureFilter.Linear;
+        GumUI.UseKeyboardDefaults();
 
         // uncomment one of these to create a layout. Only have one uncommented or else UI overlaps
         CreateMixedLayout();
@@ -125,10 +122,22 @@ public class KniGumInCodeGame : Game
         var stackPanel = new StackPanel();
         stackPanel.AddToRoot();
         stackPanel.X = 300;
+        stackPanel.Spacing = 4;
 
-        var textBox = new TextBox();
-        stackPanel.AddChild(textBox);
-        textBox.Width = 250;
+        for(int i = 0; i < 2; i++)
+        {
+            var textBox = new TextBox();
+            stackPanel.AddChild(textBox);
+            textBox.Width = 250;
+        }
+
+        var comboBox = new ComboBox();
+        stackPanel.AddChild(comboBox);
+        for(int i = 0; i < 5; i++)
+        {
+            comboBox.Items.Add("Option " + (i + 1));
+        }
+
     }
 
     private void CreateVisualsStack()

@@ -21,6 +21,7 @@ Additional children can be added directly to a control's Visual (top visual), or
 The following code shows how to add a colored rectangle to a Button.
 
 ```csharp
+// Initialize
 var button = new Button();
 button.AddToRoot();
 button.Anchor(Anchor.Center);
@@ -40,6 +41,7 @@ coloredRectangle.Height = 8;
 As mentioned above, new children can be added directly to the root, or they can be added as children of existing children. For example, the following code could be used to underline text on a Button:
 
 ```csharp
+// Initialize
 var button = new Button();
 button.AddToRoot();
 button.Anchor(Anchor.Center);
@@ -48,7 +50,7 @@ var buttonVisual = (ButtonVisual)button.Visual;
 var coloredRectangle = new ColoredRectangleRuntime();
 buttonVisual.TextInstance.AddChild(coloredRectangle);
 // So the text area doesn't fill the whole button:
-buttonVisual.TextInstance.WidthUnits = DimensionUnitType.RelativeToChildren;
+buttonVisual.TextInstance.WidthUnits = Gum.DataTypes.DimensionUnitType.RelativeToChildren;
 coloredRectangle.Color = Color.Red;
 coloredRectangle.Dock(Dock.Bottom);
 coloredRectangle.Height = 2;
@@ -61,13 +63,14 @@ coloredRectangle.Height = 2;
 Gum controls are very flexible and can function even if children are removed. Of course, removing children may limit the behavior of a control. For example, removing the TextInstance from a ButtonVisual results in the Button no longer displaying its Text string.
 
 ```csharp
+// Initialize
 var button = new Button();
 button.AddToRoot();
 button.Anchor(Anchor.Center);
 // if we remove the TextInstanc, we need to make sure the height of the button
 // is absolute and no longer depends on its children:
 button.Height = 32;
-button.HeightUnits = DimensionUnitType.Absolute;
+button.HeightUnits = Gum.DataTypes.DimensionUnitType.Absolute;
 
 var buttonVisual = (ButtonVisual)button.Visual;
 // setting Parent to null removes a child from its parent:
@@ -78,13 +81,14 @@ buttonVisual.TextInstance.Parent = null;
 
 Of course, the TextIntance can also be made invisible, which results in similar behavior:
 
-<pre class="language-csharp"><code class="lang-csharp">var button = new Button();
+<pre class="language-csharp"><code class="lang-csharp">// Initialize
+var button = new Button();
 button.AddToRoot();
 button.Anchor(Anchor.Center);
 // if we remove the TextInstanc, we need to make sure the height of the button
 // is absolute and no longer depends on its children:
 button.Height = 32;
-button.HeightUnits = DimensionUnitType.Absolute;
+button.HeightUnits = Gum.DataTypes.DimensionUnitType.Absolute;
 
 var buttonVisual = (ButtonVisual)button.Visual;
 // setting Parent to null removes a child from its parent:
@@ -98,10 +102,11 @@ Default visual children can be replaced with children of different types to furt
 The following code shows how to replace a button's default background with a SpriteRuntime. For simplicity this button uses [Lorem Picsum](https://picsum.photos/).
 
 ```csharp
+// Initialize
 var button = new Button();
 button.AddToRoot();
 button.Anchor(Anchor.Center);
-        
+
 var buttonVisual = (ButtonVisual)button.Visual;
 // setting Parent to null removes a child from its parent:
 buttonVisual.Background.Parent = null;

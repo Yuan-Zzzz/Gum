@@ -15,9 +15,10 @@ To create this class:
 3. Create the empty stub of a class as shown in the following code block.
 
 ```csharp
-using MonoGameGum.Forms.Controls;
+using Gum.Forms;
+using Gum.Forms.Controls;
 using MonoGameGum.GueDeriving;
-using MonoGameGum.Forms.DefaultVisuals;
+using Gum.Forms.DefaultVisuals;
 
 namespace MonoGameAndGum.Components;
 
@@ -48,7 +49,7 @@ public class TextInputDialog : Panel
         background.Dock(Gum.Wireframe.Dock.Fill);
         // We can use the built-in styling for the background:
         background.Texture = Styling.ActiveStyle.SpriteSheet;
-        background.ApplyState(Styling.NineSlice.Panel);
+        background.ApplyState(Styling.ActiveStyle.NineSlice.Panel);
 
         // An innerPanel stacks our children.
         // This innerPanel is sized according to
@@ -96,9 +97,11 @@ Before we look at the individual parts of the code, let's add an instance to our
 
 <strong>    var dialog = new TextInputDialog();
 </strong><strong>    dialog.AddToRoot();
-</strong><strong>    dialog.Anchor(Anchor.Center);
+</strong><strong>    dialog.Anchor(Gum.Wireframe.Anchor.Center);
 </strong>}
 </code></pre>
+
+[Try on XnaFiddle.NET](https://xnafiddle.net/#code=H4sIAAAAAAAAA51VTW_bMAy951cIPTnAILRbTw06II3XtNi6Fk3a7qrYjC1EkQxZTvqB_vdRsmPLjoOuyyX24yP5TFJUkXOZkBsl1ZStYVqsR4PCQfhIL5Ve53sAnShptBK1xfOm0wJC0HyD-L5jCEtWCPPI84KJnD5-qyPwSKtcLQ39Ixm91Bhsq_TqAzOdapalPEIhg6xYCB6RSLA8J3N4NtcyK0zImVAJOSN3TIIYvA0I_n6xBQiSabXODHpaqPLOjbbp7pzJBnHG0sv-EjDk_HvlSi1hVNvyPRs5JxsmCig5761MHYXBsJPJpDynTzw2KUb5ejpqG66AJ6mpLLVpwzRZsGiVaFXIGK0StuQ3lzDDjHBfSMPXEAw7scZxPEm5iIPG1aM0IA1VtApsL5-4hqXtgYPoJRei38N-ZKEBlczMi8DK0nFk-AbsG9BZprmBWQpger3HWSZeZoYZCPrc6w-jrrfDTiG4lKCdpSoERopWDvBL0NBQD4ts98_JyXEvYSyjVOlOCUqQTkAa0Adr20TxdZazUulzU3lAWh2n9PBI7XE7-mFVEINvZ0edgljwQj1X2ebl20f5Kif_u0qkns3jfVN5vEvGg-QmR5otWsgMm79kgHsAB1HmXElrthC9B8Fsb-fqjmmsZXesC2OU_FQ7m7lufP0xbVCv86f9hFvNURMKVBJJ3hu9Upq_4jpkoqNYrS5cgEpu-RIcEFBr3Xl5vB1U9_j2Z7e1EZMRiP_J53t6XB-u804ceLTbZu-dnWsvgBPctPa_WrS79RzCBs_pDZMswelM6qXtOMV6Btra7ePDtd2hDba7Mdpr2qUKhuStjlV9dW_CwB7F4ahewFoZiAzERG1Aax4D2Sgek2scRdzF_BX2lrETRj2CjfiFtG-zR9B2ovFS8wppuxOXd1Bz7lp7v-GWPNububpXyvTZPrOBFiwHX_SwfQ8dKMNDFtuNa0s8x1NKkuqhvyYVuyZ1svebP1AQarb9h_ytVtOJAKaDiRK2EkrLpVBb0Bd4-3qaSs0uflepA_d0vg_-Ak_Oz1ofCQAA)
 
 The TextInputDialog should appear in the center of the screen automatically.
 
@@ -155,7 +158,7 @@ public TextInputDialog()
     background.Dock(Gum.Wireframe.Dock.Fill);
     // We can use the built-in styling for the background:
     background.Texture = Styling.ActiveStyle.SpriteSheet;
-    background.ApplyState(Styling.NineSlice.Panel);
+    background.ApplyState(Styling.ActiveStyle.NineSlice.Panel);
 
     // An innerPanel stacks our children.
     // This innerPanel is sized according to
@@ -186,7 +189,7 @@ Notice that `background` is styled by setting its `Texture` property and calling
  background.Dock(Gum.Wireframe.Dock.Fill);
  // We can use the built-in styling for the background:
  background.Texture = Styling.ActiveStyle.SpriteSheet;
--background.ApplyState(Styling.NineSlice.Panel);
+-background.ApplyState(Styling.ActiveStyle.NineSlice.Panel);
 ```
 
 <figure><img src="../../../../.gitbook/assets/20_07 33 32.png" alt=""><figcaption><p>The background uses the entire sprite sheet if the ApplyState method is not called</p></figcaption></figure>
@@ -206,10 +209,12 @@ protected override void Initialize()
 
     var dialog = new TextInputDialog();
     dialog.AddToRoot();
-    dialog.Anchor(Anchor.Center);
+    dialog.Anchor(Gum.Wireframe.Anchor.Center);
     dialog.PromptText = "Enter character name:";
 }
 ```
+
+[Try on XnaFiddle.NET](https://xnafiddle.net/#code=H4sIAAAAAAAAA51V3U_bMBB_719h9SmVJgs2nqiYVJpR0MZAtMBeTXJNrLp25DgtH-J_39lJEydNxVhfGt_nz3fn3xU5lwm5VlLN2BpmxXo8KJwIP-mF0ut8T0CnShqtRK3xvOmsgBA036B83zGEJSuEeeB5wUROH77VEXikVa6Whv6RjF5oDLZVevWBms40y1IeIZBBVjwJHpFIsDwnC3g2VzIrTMiZUAk5JbdMghi8DQj-frEnECTTap0Z9LSiyjs32qa7dSobxClLL_tLwJCz75UrtQbjWpfv6cgZ2TBRQGnz3srUQRiMOplMynP6yGOTYpSvJ-O24hJ4kppKU6s2TJMnFq0SrQoZo1bClvzmEuaYEe4KafgaglEn1iSOpykXcdC4eiaNkIYqWgW2l49cw9L2wInoBRei38NestCASObmRWBl6SQyfAP2BHSeaW5gngKYXu9JlomXuWEGgj73-mLU9XbUKQSXErTTVIXASNHKCfwSNGaIh0W2-2fk-KjXYCKjVOlOCUohnYI0oA_Wtoni4yxnpcLnpvIAtDpO6eEZtcdt-MOiIAZPp8NOQazwXD1X2Rbl6aN8lZN_r1JSz-bRvqp83qXFveQmRzNbtJAZtnjJAHkAB1HmXEmrtiJ6B4LZ3i7ULdNYy-5YF8Yo-al2NnPd-Ppj2ki9zp_0G9xojpgQoJJo5J3opdL8FemQiQ5itTp3ASq45SE4AKDGuvPy7Haiusc3P7utjZiMQPxPPt_Ts_XFdd6pEw53bPbe4Vy7AI6Rae1_RbQ7eg5hg-_0mkmW4HQmNWk7m2I9B2319vP-ynJoI9ttjDZNu1TBiLzVsapb9yYM7FMcjWsC1spAZCAmagNa8xjIRvGYXOEoIhfzV9gjYweMegY24hfS3mYPoO1E41LzCmm7E5c7qHl3Ld5vbEs725uFulPK9Ok-w0CVT7PMGoKIUqZZZL8kRjgd-vybg3_TUXt5HajdfRZbmrZ9WeDTJkn10V_Iyro26mTvV3-AINRs-w_5W_NBpwKYDqZK2PIpLZdCbUGf48r2MJWYXfwuUifcw_k--AsSDKA7VAkAAA)
 
 <figure><img src="../../../../.gitbook/assets/20_07 38 58.png" alt=""><figcaption></figcaption></figure>
 
@@ -262,11 +267,13 @@ If we change our prompt, notice that the textBox adjusts appropriately:
 
     var dialog = new TextInputDialog();
     dialog.AddToRoot();
-    dialog.Anchor(Anchor.Center);
+    dialog.Anchor(Gum.Wireframe.Anchor.Center);
 
 <strong>    dialog.PromptText = "This is a much longer prompt, so the dialog is wider:";
 </strong>}
 </code></pre>
+
+[Try on XnaFiddle.NET](https://xnafiddle.net/#code=H4sIAAAAAAAAA51VUU_bMBB-76-w-pRKyIKNJyomlXYUtDEQLbBXk1xTq64vcpwWmPjvOydp4qSpGKuQSO6-u_tyd_6cpVLH7AY1TsUaptl62MtyEz3ySzTrdM_Ax6itQVV5vGg-zWACRm7Ivh84gYXIlH2UaSZUyh-_VhlkaDDFheW_teCXhpJt0aw-cPOpEclShkSkl2TPSoYsVCJN2Rxe7LVOMjuRQmHMztid0KB6f3qMfj_FMyiWGFwnliKdqYxOrXHl7nKXS5I7iyj3i8Gy829lKHeAYeVL93zsnG2EyqDAvDcqtRgGg1Ylu5Qpf5KRXVKWL6fDpuMKZLy0padybYRhzyJcxQYzHZFXw5b9khpmVBHuM23lGoJBK9coisZLqaKgDvUgtZFPMFwFbpZP0sDCzSA38UupVHeE-8jMADGZ2VdFneWj0MoNuDfgs8RIC7MlgO2MHiWJep1ZYSHoCq8-jOezHbQaIbUGk3vKRlCmcJUb_BbUMOIjQjf9c3Zy3AkY6XCJptWCwsjHoC2Yg72ts_g8i10p-eVbeYBalaeI8EDNdet_dyyYpbezfqshzniBL2W1efH2Ub0yyP-uwlLt5vG-qzjeBeJBS5sSzDVtIqyYvyZAOkCLqFOJ2rmdid-DEm62c7wThnrZXuvMWtSfGme913Wsv6a11Zv8aTfg1kjiRARRE8h741do5BvJoVAtxri6yBOUdIuX4ACBiusuysPtTNWMb3-0RxsKHYL6n3p-pIf1zVXdcW7s79TsvaW57gI4IaV1_0uh3cnzBDZ0Tm-EFjFtZ1yJdo7J1jMwzu8eH66dhta23Y3RlOm8VDBgf6pc5Vd3FgzcURwMKwE2aCG0EDHcgDEyArZBGbFrWkXSYvkGe2KcE-MewGU8Ys3b7BGM22i61LxGuulExR1Un7uG7tfYAudmM8d7RNvl-4wClTH1ZeaGOCfmjP4EW2fhkinUbiSFihyxFEm3YMeYYFtqjznr-_qcgt-JQfNyO9DbhyRyMu7mNqejz-LyobvRJboCtap3uz9gMDFi-w_1G_vDxwqECcaoXHvR6IXCLZgLutI9TgXnPH-baW7c4_ne-ws0GW6-dAkAAA)
 
 <figure><img src="../../../../.gitbook/assets/20_08 01 24.png" alt=""><figcaption><p>Wider prompt makes the TextInputDialog wider</p></figcaption></figure>
 

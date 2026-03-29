@@ -42,7 +42,7 @@ public class DeleteObjectPlugin : InternalPlugin
         CreateDeleteChildrenGroupBox();
 
         this.DeleteOptionsWindowShow += HandleDeleteOptionsShow;
-        this.DeleteConfirm += HandleDeleteConfirm;
+        this.DeleteConfirmed += HandleDeleteConfirmed;
     }
 
     private void CreateDeleteChildrenGroupBox()
@@ -63,7 +63,7 @@ public class DeleteObjectPlugin : InternalPlugin
         stackPanel.Children.Add(deleteAllContainedObjects);
     }
 
-    void HandleDeleteConfirm(Windows.DeleteOptionsWindow deleteOptionsWindow, Array deletedObjects)
+    void HandleDeleteConfirmed(Windows.DeleteOptionsWindow deleteOptionsWindow, Array deletedObjects)
     {
         // Collect all instances to delete in a batch
         var instancesToDelete = new List<InstanceSave>();
@@ -126,16 +126,21 @@ public class DeleteObjectPlugin : InternalPlugin
         var shouldDetachChildren = deleteJustParent.IsChecked == true;
         var shouldDeleteChildren = deleteAllContainedObjects.IsChecked == true;
 
-        // Use the first instance's parent container (all instances in a batch should have the same parent)
-        var element = instancesList.First().ParentContainer;
-
         if (shouldDetachChildren)
         {
             _instanceDeletionHelper.DetachChildrenFromInstances(instancesList);
         }
         if (shouldDeleteChildren)
         {
-            _instanceDeletionHelper.RecursivelyDeleteChildrenOfInstances(instancesList, element);
+            // Group by parent container since instances may belong to different elements
+            var instancesByParent = instancesList
+                .GroupBy(i => i.ParentContainer)
+                .Where(g => g.Key != null);
+
+            foreach (var group in instancesByParent)
+            {
+                _instanceDeletionHelper.RecursivelyDeleteChildrenOfInstances(group.ToList(), group.Key);
+            }
         }
     }
 

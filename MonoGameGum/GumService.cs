@@ -83,6 +83,10 @@ public class GumService
 
     public DeferredActionQueue DeferredQueue { get; private set; }
 
+#if !IOS && !ANDROID
+    private IGumHotReloadManager? _hotReloadManager;
+#endif
+
     /// <summary>
     /// Gets or sets the width of the canvas, which acts as the root-most coordiante space. This value
     /// represents the "internal coordinates" which can be adjusted by Camera zoom.
@@ -110,6 +114,22 @@ public class GumService
     public InteractiveGue PopupRoot => FrameworkElement.PopupRoot;
     /// <inheritdoc/>
     public InteractiveGue ModalRoot => FrameworkElement.ModalRoot;
+
+#if !IOS && !ANDROID
+    /// <summary>
+    /// Starts watching the Gum project source files at the given path.
+    /// When any .gumx, .gucx, .gusx, or .gutx file changes, the project
+    /// is reloaded and active elements in Root have their state reapplied.
+    /// </summary>
+    /// <param name="absoluteGumxSourcePath">
+    /// Absolute path to the source .gumx file (not the bin/Content copy).
+    /// </param>
+    public void EnableHotReload(string absoluteGumxSourcePath)
+    {
+        _hotReloadManager = new GumHotReloadManager();
+        _hotReloadManager.Start(absoluteGumxSourcePath);
+    }
+#endif
 
     public void UseKeyboardDefaults()
     {
@@ -157,6 +177,17 @@ public class GumService
         DeferredQueue = new DeferredActionQueue();
     }
 
+    /// <summary>
+    /// Marks GumService as initialized without requiring a graphics device.
+    /// Intended for use in unit tests only.
+    /// </summary>
+    public void InitializeForTesting()
+    {
+        if (!IsInitialized)
+        {
+            IsInitialized = true;
+        }
+    }
 
 #if XNALIKE
     /// <summary>
@@ -265,8 +296,27 @@ public class GumService
     }
 
 #if XNALIKE
-    [Obsolete("Initialize passing Game as the first parameter rather than GraphicsDevice. Using this method does not support non-(EN-US) keyboard layouts, and " +
-        "does not support ALT+numeric key codes for accents in TextBoxes. This method will be removed in June 2026")]
+    /// <summary>
+    /// Initializes Gum without a <see cref="Microsoft.Xna.Framework.Game"/> instance.
+    /// <para>
+    /// This overload is intended for non-interactive scenarios such as CLI tools, screenshot
+    /// generation, and headless rendering pipelines where a <c>Game</c> object is not available.
+    /// </para>
+    /// <para>
+    /// Input handling is NOT supported in this mode. This includes keyboard input, cursor/mouse
+    /// input, gamepad input, non-EN-US keyboard layouts, and ALT+numeric key codes for accented
+    /// characters in <c>TextBox</c> controls.
+    /// </para>
+    /// <para>
+    /// Interactive games should use <see cref="Initialize(Microsoft.Xna.Framework.Game, string?)"/>
+    /// instead, which wires up full input support.
+    /// </para>
+    /// </summary>
+    /// <param name="graphicsDevice">The <see cref="GraphicsDevice"/> to use for rendering.</param>
+    /// <param name="gumProjectFile">
+    /// Optional path to a <c>.gumx</c> project file to load. Pass <c>null</c> to skip project loading.
+    /// </param>
+    /// <returns>The loaded <see cref="GumProjectSave"/>, or <c>null</c> if no project file was specified.</returns>
     public GumProjectSave? Initialize(GraphicsDevice graphicsDevice, string? gumProjectFile = null)
     {
         return InitializeInternal(null, graphicsDevice, gumProjectFile);
@@ -302,12 +352,14 @@ public class GumService
 
 #if XNALIKE
         this.SystemManagers.Initialize(graphicsDevice, fullInstantiation: true);
+        FormsUtilities.InitializeDefaults(game:game, systemManagers: this.SystemManagers,
+            defaultVisualsVersion: defaultVisualsVersion);
 #elif RAYLIB
+        FormsUtilities.InitializeDefaults(systemManagers: this.SystemManagers,
+            defaultVisualsVersion: defaultVisualsVersion);
         this.SystemManagers.Initialize();
 #endif
 
-        FormsUtilities.InitializeDefaults(systemManagers: this.SystemManagers,
-            defaultVisualsVersion: defaultVisualsVersion);
 
         Root.AddToManagers(SystemManagers);
         Root.UpdateLayout();
@@ -395,6 +447,103 @@ public class GumService
 #endif
     #endregion
 
+    #region Uninitialize
+
+    /// <summary>
+    /// Tears down this GumService instance, releasing GPU resources, clearing registrations,
+    /// and resetting all static state so that Initialize can be called again (e.g., between
+    /// test runs or after a scene transition that requires full teardown).
+    /// </summary>
+    public void Uninitialize()
+    {
+#if !IOS && !ANDROID
+        _hotReloadManager?.Stop();
+        _hotReloadManager = null;
+#endif
+
+        DeferredQueue.Clear();
+
+        InteractiveGue.CurrentInputReceiver = null;
+
+        Root.Children.Clear();
+        Root.RemoveFromManagers();
+
+        if (FrameworkElement.PopupRoot != null)
+        {
+            FrameworkElement.PopupRoot.Children.Clear();
+            FrameworkElement.PopupRoot.RemoveFromManagers();
+            FrameworkElement.PopupRoot = null;
+        }
+
+        if (FrameworkElement.ModalRoot != null)
+        {
+            FrameworkElement.ModalRoot.Children.Clear();
+            FrameworkElement.ModalRoot.RemoveFromManagers();
+            FrameworkElement.ModalRoot = null;
+        }
+
+        FrameworkElement.KeyboardsForUiControl.Clear();
+        FrameworkElement.GamePadsForUiControl.Clear();
+        FrameworkElement.MainCursor = null;
+        FrameworkElement.MainKeyboard = null;
+
+        FormsUtilities.Uninitialize();
+
+        ElementSaveExtensions.ClearRegistrations();
+
+        FrameworkElement.DefaultFormsTemplates.Clear();
+        FrameworkElement.DefaultFormsComponents.Clear();
+
+        ObjectFinder.Self.GumProjectSave = null;
+
+        LoaderManager.Self.DisposeAndClear();
+
+#if XNALIKE
+        Text.DefaultBitmapFont = null;
+        Text.DefaultFont = null;
+
+        if (Sprite.InvalidTexture != null)
+        {
+            Sprite.InvalidTexture.Dispose();
+            Sprite.InvalidTexture = null;
+        }
+
+        if (_systemManagers != null)
+        {
+            _systemManagers.Renderer.Uninitialize();
+        }
+
+        Gum.Forms.DefaultVisuals.Styling.ActiveStyle = null;
+        Gum.Forms.DefaultVisuals.V3.Styling.ActiveStyle = null;
+#endif
+
+        GraphicalUiElement.SetPropertyOnRenderable = null!;
+        GraphicalUiElement.UpdateFontFromProperties = null;
+        GraphicalUiElement.AddRenderableToManagers = null;
+        GraphicalUiElement.RemoveRenderableFromManagers = null;
+
+        GraphicalUiElement.CanvasWidth = 0;
+        GraphicalUiElement.CanvasHeight = 0;
+
+        SystemManagers.Default = null;
+        ISystemManagers.Default = null;
+
+        // Only reset RelativeDirectory if a project was loaded (it gets set to the project directory).
+        // Reset to the default value expected before initialization.
+        FileManager.RelativeDirectory = "Content/";
+
+        IsInitialized = false;
+
+        _systemManagers = null;
+#if XNALIKE
+        _game = null;
+#endif
+
+        _default = null;
+    }
+
+    #endregion
+
     #region Update
 
 #if XNALIKE
@@ -447,6 +596,9 @@ public class GumService
 #endif
 
         DeferredQueue.ProcessPending();
+#if !IOS && !ANDROID
+        _hotReloadManager?.Update(Root);
+#endif
         GameTime = gameTime;
 #if XNALIKE
         FormsUtilities.Update(_game, gameTime, roots);
@@ -480,6 +632,11 @@ public static class GraphicalUiElementExtensionMethods
 {
     public static void AddToRoot(this GraphicalUiElement element)
     {
+        if(GumService.Default.IsInitialized == false)
+        {
+            throw new InvalidOperationException("Cannot call AddToRoot because GumService.Default " +
+                "is not initialized - did you remember to initialize Gum first (GumUI.Initialize)?");
+        }
         GumService.Default.Root.Children.Add(element);
     }
 
@@ -497,6 +654,11 @@ public static class GraphicalUiElementExtensionMethods
 
     public static void AddToRoot(this FrameworkElement element)
     {
+        if (GumService.Default.IsInitialized == false)
+        {
+            throw new InvalidOperationException("Cannot call AddToRoot because GumService.Default " +
+                "is not initialized - did you remember to initialize Gum first (GumUI.Initialize)?");
+        }
         GumService.Default.Root.Children.Add(element.Visual);
     }
 }

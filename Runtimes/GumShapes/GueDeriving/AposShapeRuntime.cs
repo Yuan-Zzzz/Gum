@@ -19,7 +19,7 @@ namespace MonoGameGum.GueDeriving;
 /// <summary>
 /// Base class for all shapes, providng common properties like color, gradient, and dropshadow.
 /// </summary>
-public abstract class AposShapeRuntime : BindableGue
+public abstract class AposShapeRuntime : GraphicalUiElement
 {
 #pragma warning disable CA2255 // The 'ModuleInitializer' attribute should not be used in libraries
     // This is needed so we can register the shapes types
@@ -35,6 +35,10 @@ public abstract class AposShapeRuntime : BindableGue
         ElementSaveExtensions.RegisterGueInstantiation(
             "ColoredCircle",
             () => new ColoredCircleRuntime());
+
+        ElementSaveExtensions.RegisterGueInstantiation(
+            "Line",
+            () => new LineRuntime());
 
         ElementSaveExtensions.RegisterGueInstantiation(
             "RoundedRectangle",
@@ -55,6 +59,8 @@ public abstract class AposShapeRuntime : BindableGue
                 return StandardElementsManager.GetArcState();
             case "ColoredCircle":
                 return StandardElementsManager.GetColoredCircleState();
+            case "Line":
+                return StandardElementsManager.GetLineState();
             case "RoundedRectangle":
                 return StandardElementsManager.GetRoundedRectangleState();
 

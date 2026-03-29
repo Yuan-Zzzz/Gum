@@ -36,14 +36,25 @@ public partial class ElementTreeViewManager
 
     private void AddSeparator() => _contextMenu.Items.Add(new Separator());
 
+    private void AddFolderMenuItems()
+    {
+        var folderCount = _selectedState.SelectedTreeNodes
+            .Count(n => n.IsScreensFolderTreeNode() || n.IsComponentsFolderTreeNode());
+        var deleteText = folderCount > 1 ? $"Delete {folderCount} Folders" : "Delete Folder";
+        AddMenuItem(deleteText, HandleDeleteFolder);
+        if (folderCount == 1)
+        {
+            AddMenuItem("Rename Folder", HandleRenameFolder);
+        }
+    }
+
     #endregion
 
     #region Event handlers
 
     void HandleDeleteObject()
     {
-        using var undoLock = _undoManager.RequestLock();
-        _deleteLogic.HandleDeleteCommand();
+        _editCommands.DeleteSelection();
     }
 
     void HandleDuplicateElement()
@@ -146,11 +157,13 @@ public partial class ElementTreeViewManager
 
     void HandleDeleteFolder()
     {
-        var treeNode = _selectedState.SelectedTreeNode;
+        var folderNodes = _selectedState.SelectedTreeNodes
+            .Where(n => n.IsScreensFolderTreeNode() || n.IsComponentsFolderTreeNode())
+            .ToList();
 
-        if (treeNode != null)
+        if (folderNodes.Count > 0)
         {
-            _deleteLogic.DeleteFolder(treeNode);
+            _deleteLogic.DeleteFolders(folderNodes);
         }
     }
 
@@ -163,9 +176,30 @@ public partial class ElementTreeViewManager
 
         if (SelectedNode != null)
         {
+            // Check for mixed-type selections by reading directly from tree view
+            var allSelectedTags = _selectedState.SelectedTreeNodes
+                .Select(n => n.Tag)
+                .Where(t => t != null)
+                .ToList();
+
+            var elementsFromTree = allSelectedTags.OfType<ElementSave>()
+                .Where(e => e is not StandardElementSave).ToList();
+            var behaviorsFromTree = allSelectedTags.OfType<BehaviorSave>().ToList();
+            var instancesFromTree = allSelectedTags.OfType<InstanceSave>().ToList();
+
+            int typesPresent = (elementsFromTree.Count > 0 ? 1 : 0)
+                + (behaviorsFromTree.Count > 0 ? 1 : 0)
+                + (instancesFromTree.Count > 0 ? 1 : 0);
+
+            if (typesPresent > 1)
+            {
+                int totalCount = elementsFromTree.Count + behaviorsFromTree.Count + instancesFromTree.Count;
+                AddMenuItem($"Delete {totalCount} items", HandleDeleteObject);
+            }
+
             #region InstanceSave
             // InstanceSave selected
-            if (_selectedState.SelectedInstance != null)
+            else if (_selectedState.SelectedInstance != null)
             {
                 var containerElement = _selectedState.SelectedElement;
                 AddMenuItem("Go to definition", HandleGoToDefinition);
@@ -179,12 +213,17 @@ public partial class ElementTreeViewManager
 
                 AddSeparator();
 
-                var deleteText = _selectedState.SelectedInstances.Count() > 1
-                    ? $"Delete {_selectedState.SelectedInstances.Count()} instances"
+                var instances = _selectedState.SelectedInstances.ToList();
+                var allLocked = instances.All(i => i.Locked);
+                var lockText = instances.Count > 1
+                    ? (allLocked ? $"Unlock {instances.Count} instances" : $"Lock {instances.Count} instances")
+                    : (allLocked ? $"Unlock {_selectedState.SelectedInstance.Name}" : $"Lock {_selectedState.SelectedInstance.Name}");
+                AddMenuItem(lockText, HandleToggleLock);
+
+                var deleteText = instances.Count > 1
+                    ? $"Delete {instances.Count} instances"
                     : $"Delete {_selectedState.SelectedInstance.Name}";
                 AddMenuItem(deleteText, () => _editCommands.DeleteSelection());
-
-
 
                 if (containerElement != null)
                 {
@@ -226,12 +265,33 @@ public partial class ElementTreeViewManager
 
                 AddCreateInstanceMenuItems("Add object to " + _selectedState.SelectedElement!.Name);
 
-                AddMenuItem("Force Save Object", HandleForceSaveObject);
-
                 var duplicateText = _selectedState.SelectedScreen != null
                     ? $"Duplicate {_selectedState.SelectedScreen.Name}"
                     : $"Duplicate {_selectedState.SelectedComponent!.Name}";
                 AddMenuItem(duplicateText, HandleDuplicateElement);
+
+                AddSeparator();
+
+                var selectedElements = _selectedState.SelectedElements.ToList();
+                string elementDeleteText;
+                if (selectedElements.Count > 1)
+                {
+                    bool allScreens = selectedElements.All(e => e is ScreenSave);
+                    bool allComponents = selectedElements.All(e => e is ComponentSave);
+                    if (allScreens)
+                        elementDeleteText = $"Delete {selectedElements.Count} Screens";
+                    else if (allComponents)
+                        elementDeleteText = $"Delete {selectedElements.Count} Components";
+                    else
+                        elementDeleteText = $"Delete {selectedElements.Count} elements";
+                }
+                else
+                {
+                    elementDeleteText = "Delete " + _selectedState.SelectedElement.ToString();
+                }
+                AddMenuItem(elementDeleteText, HandleDeleteObject);
+
+                AddSeparator();
 
                 AddCopyMenuItems();
                 AddCutMenuItems();
@@ -239,13 +299,11 @@ public partial class ElementTreeViewManager
 
                 AddSeparator();
 
-                AddMenuItem("Delete " + _selectedState.SelectedElement.ToString(), HandleDeleteObject);
+                AddMenuItem("Force Save Object", HandleForceSaveObject);
 
                 // Add favorite toggle for components only
                 if (_selectedState.SelectedComponent != null)
                 {
-                    AddSeparator();
-
                     var isFavorite = _favoriteComponentManager.IsFavorite(_selectedState.SelectedComponent);
                     var favoriteText = isFavorite ? "Remove from Favorites" : "Add to Favorites";
                     AddMenuItem(favoriteText, HandleToggleFavorite);
@@ -259,8 +317,18 @@ public partial class ElementTreeViewManager
             else if (_selectedState.SelectedBehavior != null)
             {
                 AddMenuItem("View in explorer", HandleViewInExplorer);
+                var selectedBehaviors = _selectedState.SelectedBehaviors.ToList();
+                if (selectedBehaviors.Count == 1)
+                {
+                    AddMenuItem("Rename", () => _editCommands.AskToRenameBehavior(_selectedState.SelectedBehavior));
+                    AddSeparator();
+                    AddCreateBehaviorInstanceMenuItems("Add object to " + _selectedState.SelectedBehavior.Name);
+                }
                 AddSeparator();
-                AddMenuItem("Delete " + _selectedState.SelectedBehavior.ToString(), HandleDeleteObject);
+                var behaviorDeleteText = selectedBehaviors.Count > 1
+                    ? $"Delete {selectedBehaviors.Count} Behaviors"
+                    : "Delete " + _selectedState.SelectedBehavior.ToString();
+                AddMenuItem(behaviorDeleteText, HandleDeleteObject);
             }
 
             #endregion
@@ -289,8 +357,7 @@ public partial class ElementTreeViewManager
 
                 if (SelectedNode.IsScreensFolderTreeNode())
                 {
-                    AddMenuItem("Delete Folder", HandleDeleteFolder);
-                    AddMenuItem("Rename Folder", HandleRenameFolder);
+                    AddFolderMenuItems();
                 }
             }
 
@@ -307,9 +374,7 @@ public partial class ElementTreeViewManager
 
                 if (SelectedNode.IsComponentsFolderTreeNode())
                 {
-                    AddMenuItem("Delete Folder", HandleDeleteFolder);
-                    AddMenuItem("Rename Folder", HandleRenameFolder);
-
+                    AddFolderMenuItems();
                 }
             }
 
@@ -417,6 +482,41 @@ public partial class ElementTreeViewManager
         }
     }
 
+    private void AddCreateBehaviorInstanceMenuItems(string itemText)
+    {
+        var parentMenuItem = new MenuItem { Header = itemText };
+        _contextMenu.Items.Add(parentMenuItem);
+
+        var types = new[] {
+            "Circle",
+            "ColoredRectangle",
+            "Container",
+            "NineSlice",
+            "Polygon",
+            "Rectangle",
+            "Sprite",
+            "Text"
+        };
+
+        foreach (var type in types)
+        {
+            var menuItem = new MenuItem { Header = type };
+            parentMenuItem.Items.Add(menuItem);
+
+            menuItem.Click += (_, _) =>
+            {
+                var selectedBehavior = _selectedState.SelectedBehavior;
+                if (selectedBehavior != null)
+                {
+                    var typeElement = ObjectFinder.Self.GetElementSave(type)!;
+                    var name = _elementCommands.GetUniqueNameForNewInstance(typeElement, selectedBehavior);
+                    _undoManager.RecordBehaviorState(selectedBehavior);
+                    _elementCommands.AddInstance(selectedBehavior, name, type);
+                }
+            };
+        }
+    }
+
     private void AddCopyMenuItems()
     {
         AddMenuItem("Copy", () => _copyPasteLogic.OnCopy(CopyType.InstanceOrElement));
@@ -458,6 +558,30 @@ public partial class ElementTreeViewManager
             new List<DataTypes.Variables.StateSave> { derivedElement.DefaultState.Clone() },
             baseElement,
             null);
+    }
+
+    private void HandleToggleLock()
+    {
+        var instances = _selectedState.SelectedInstances.ToList();
+        var element = _selectedState.SelectedElement;
+        if (element == null || instances.Count == 0) return;
+
+        var shouldLock = instances.Any(i => !i.Locked);
+
+        using var undoLock = _undoManager.RequestLock();
+
+        for (int i = 0; i < instances.Count; i++)
+        {
+            var instance = instances[i];
+            if (instance.Locked != shouldLock)
+            {
+                var oldValue = instance.Locked;
+                instance.Locked = shouldLock;
+                var isLast = i == instances.Count - 1;
+                _setVariableLogic.PropertyValueChanged("Locked", oldValue, instance, element.DefaultState,
+                    refresh: isLast, trySave: isLast);
+            }
+        }
     }
 
     private void HandleToggleFavorite()

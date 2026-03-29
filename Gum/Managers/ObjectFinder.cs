@@ -64,6 +64,12 @@ public interface IObjectFinder
     ElementSave? GetElementSave(InstanceSave instance);
     ElementSave? GetElementSave(string elementName);
     List<ElementSave> GetBaseElements(ElementSave elementSave);
+
+    /// <summary>
+    /// Returns true if <paramref name="variableName"/> appears in <see cref="ElementSave.VariablesHiddenFromInstances"/>
+    /// on <paramref name="elementSave"/> or any of its base types.
+    /// </summary>
+    bool IsVariableHiddenRecursively(ElementSave elementSave, string variableName);
 }
 
 public class ObjectFinder : IObjectFinder
@@ -623,7 +629,7 @@ public class ObjectFinder : IObjectFinder
 
     #region Get Elements by inheritance
 
-    public StandardElementSave GetRootStandardElementSave(ElementSave elementSave)
+    public StandardElementSave? GetRootStandardElementSave(ElementSave? elementSave)
     {
         if (elementSave == null)
         {
@@ -636,7 +642,7 @@ public class ObjectFinder : IObjectFinder
 
             return ObjectFinder.Self.GetElementSave("Screen") as StandardElementSave;
         }
-        while (!(elementSave is StandardElementSave) && !string.IsNullOrEmpty(elementSave.BaseType))
+        while (!(elementSave is StandardElementSave) && !string.IsNullOrEmpty(elementSave?.BaseType))
         {
             elementSave = GetElementSave(elementSave.BaseType);
         }
@@ -644,7 +650,7 @@ public class ObjectFinder : IObjectFinder
         return elementSave as StandardElementSave;
     }
 
-    public StandardElementSave GetRootStandardElementSave(InstanceSave instanceSave)
+    public StandardElementSave? GetRootStandardElementSave(InstanceSave instanceSave)
     {
         return GetRootStandardElementSave(instanceSave.GetBaseElementSave());
     }
@@ -719,6 +725,21 @@ public class ObjectFinder : IObjectFinder
         FillListWithBaseElements(elementSave, toReturn);
 
         return toReturn;
+    }
+
+    /// <inheritdoc/>
+    public bool IsVariableHiddenRecursively(ElementSave elementSave, string variableName)
+    {
+        var current = elementSave;
+        while (current != null)
+        {
+            if (current.VariablesHiddenFromInstances?.Contains(variableName) == true)
+            {
+                return true;
+            }
+            current = !string.IsNullOrEmpty(current.BaseType) ? GetElementSave(current.BaseType) : null;
+        }
+        return false;
     }
 
     #endregion
@@ -897,7 +918,7 @@ public class ObjectFinder : IObjectFinder
         var targetInstanceComponent = ObjectFinder.Self.GetComponent(targetInstance);
         if (targetInstanceComponent != null)
         {
-            var instanceContainer = ObjectFinder.Self.GetContainerOf(targetInstance);
+            var instanceContainer = ObjectFinder.Self.GetElementContainerOf(targetInstance);
 
             var recursiveVariableFinder = new RecursiveVariableFinder(stateSave ?? instanceContainer?.DefaultState);
             defaultChild = recursiveVariableFinder.GetValue<string>($"{targetInstance.Name}.DefaultChildContainer");

@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 
 namespace MonoGameGum.GueDeriving;
 
-public class ColoredRectangleRuntime : BindableGue
+public class ColoredRectangleRuntime : GraphicalUiElement
 {
     public static float DefaultWidth = 50;
     public static float DefaultHeight = 50;
@@ -52,7 +52,7 @@ public class ColoredRectangleRuntime : BindableGue
         }
     }
 
-    public Gum.RenderingLibrary.Blend Blend
+    public Gum.RenderingLibrary.Blend? Blend
     {
         get
         {
@@ -60,7 +60,10 @@ public class ColoredRectangleRuntime : BindableGue
         }
         set
         {
-            BlendState = value.ToBlendState().ToXNA();
+            if (value.HasValue)
+            {
+                BlendState = value.Value.ToBlendState().ToXNA();
+            }
             // NotifyPropertyChanged handled by BlendState:
         }
     }
